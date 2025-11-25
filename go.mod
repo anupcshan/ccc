@@ -2,7 +2,10 @@ module ccc
 
 go 1.25.3
 
-require github.com/olekukonko/tablewriter v1.1.0
+require (
+	github.com/go-json-experiment/json v0.0.0-20251027170946-4849db3c2f7e
+	github.com/olekukonko/tablewriter v1.1.0
+)
 
 require (
 	github.com/fatih/color v1.15.0 // indirect
