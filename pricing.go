@@ -13,6 +13,13 @@ type ModelPricing struct {
 
 // Pricing table for Claude model families (per million tokens)
 var modelPricing = map[string]ModelPricing{
+	"opus-4.5": {
+		Input:        5.00,
+		Cache5mWrite: 6.25,
+		Cache1hWrite: 10.00, // 2× input, following standard pattern
+		CacheRead:    0.50,
+		Output:       25.00,
+	},
 	"opus": {
 		Input:        15.00,
 		Cache5mWrite: 18.75,
@@ -72,8 +79,12 @@ func isSonnet4(model string) bool {
 func GetModelPricing(model string, usage *UsageInfo) (ModelPricing, string, bool) {
 	modelLower := strings.ToLower(model)
 
-	// Check for Opus (all versions same price)
+	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
+		// Opus 4.5 has different pricing
+		if strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5") {
+			return modelPricing["opus-4.5"], "opus-4.5", true
+		}
 		return modelPricing["opus"], "opus", true
 	}
 
