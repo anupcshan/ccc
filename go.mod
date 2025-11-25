@@ -1,4 +1,4 @@
-module ccc
+module github.com/anupcshan/ccc
 
 go 1.25.3
 
