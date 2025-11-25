@@ -661,24 +661,23 @@ func renderSummary(metricsByGroup map[string]Metrics, formatStr string, allRecor
 		totalMetrics.CacheWriteCost += m.CacheWriteCost
 	}
 
-	// Calculate time-based breakdowns
+	// Calculate time-based breakdowns using normalized dates (midnight)
 	now := time.Now()
-	today := now.Format("2006-01-02")
-	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	weekStart := today.AddDate(0, 0, -int(today.Weekday()))
+	monthStart := today.AddDate(0, 0, 1-today.Day())
 
 	todayMetrics := Metrics{}
 	weekMetrics := Metrics{}
 	monthMetrics := Metrics{}
 
 	for _, record := range allRecords {
-		recordDate, err := time.Parse("2006-01-02", record.Timestamp)
+		recordDate, err := time.ParseInLocation("2006-01-02", record.Timestamp, now.Location())
 		if err != nil {
 			continue
 		}
 
-		// Today
-		if record.Timestamp == today {
+		if !recordDate.Before(today) {
 			todayMetrics.Cost += record.Cost
 			todayMetrics.InputTokens += record.InputTokens
 			todayMetrics.OutputTokens += record.OutputTokens
@@ -690,8 +689,7 @@ func renderSummary(metricsByGroup map[string]Metrics, formatStr string, allRecor
 			todayMetrics.CacheWriteCost += record.CacheWriteCost
 		}
 
-		// This week
-		if recordDate.After(weekStart) || recordDate.Equal(weekStart) {
+		if !recordDate.Before(weekStart) {
 			weekMetrics.Cost += record.Cost
 			weekMetrics.InputTokens += record.InputTokens
 			weekMetrics.OutputTokens += record.OutputTokens
@@ -703,8 +701,7 @@ func renderSummary(metricsByGroup map[string]Metrics, formatStr string, allRecor
 			weekMetrics.CacheWriteCost += record.CacheWriteCost
 		}
 
-		// This month
-		if recordDate.After(monthStart) || recordDate.Equal(monthStart) {
+		if !recordDate.Before(monthStart) {
 			monthMetrics.Cost += record.Cost
 			monthMetrics.InputTokens += record.InputTokens
 			monthMetrics.OutputTokens += record.OutputTokens
