@@ -629,15 +629,22 @@ type SummaryData struct {
 	Today     Metrics
 	ThisWeek  Metrics
 	ThisMonth Metrics
+	// Pre-formatted strings for aligned output
+	TodayCost      string
+	ThisWeekCost   string
+	ThisMonthCost  string
+	TodayTokens    string
+	ThisWeekTokens string
+	ThisMonthTokens string
 }
 
 // Named templates for common summary formats
 var namedTemplates = map[string]string{
 	"totalcost":   "${{printf \"%.2f\" .TotalCost}}",
 	"totaltokens": "{{formatTokens .TotalTokens}}",
-	"costsummary": `Today:      ${{printf "%.2f" .Today.Cost}} ({{formatTokens (.Today.InputTokens | add .Today.OutputTokens | add .Today.CacheReadTokens | add .Today.CacheWriteTokens)}} tokens)
-This Week:  ${{printf "%.2f" .ThisWeek.Cost}} ({{formatTokens (.ThisWeek.InputTokens | add .ThisWeek.OutputTokens | add .ThisWeek.CacheReadTokens | add .ThisWeek.CacheWriteTokens)}} tokens)
-This Month: ${{printf "%.2f" .ThisMonth.Cost}} ({{formatTokens (.ThisMonth.InputTokens | add .ThisMonth.OutputTokens | add .ThisMonth.CacheReadTokens | add .ThisMonth.CacheWriteTokens)}} tokens)`,
+	"costsummary": `Today:      ${{.TodayCost}} ({{.TodayTokens}} tokens)
+This Week:  ${{.ThisWeekCost}} ({{.ThisWeekTokens}} tokens)
+This Month: ${{.ThisMonthCost}} ({{.ThisMonthTokens}} tokens)`,
 }
 
 // renderSummary outputs a summary using the provided template format
@@ -714,6 +721,28 @@ func renderSummary(metricsByGroup map[string]Metrics, formatStr string, allRecor
 		}
 	}
 
+	// Calculate total tokens for each period
+	todayTotalTokens := todayMetrics.InputTokens + todayMetrics.OutputTokens + todayMetrics.CacheReadTokens + todayMetrics.CacheWriteTokens
+	weekTotalTokens := weekMetrics.InputTokens + weekMetrics.OutputTokens + weekMetrics.CacheReadTokens + weekMetrics.CacheWriteTokens
+	monthTotalTokens := monthMetrics.InputTokens + monthMetrics.OutputTokens + monthMetrics.CacheReadTokens + monthMetrics.CacheWriteTokens
+
+	// Calculate max widths for alignment
+	costs := []float64{todayMetrics.Cost, weekMetrics.Cost, monthMetrics.Cost}
+	maxCostWidth := 0
+	for _, c := range costs {
+		if w := len(fmt.Sprintf("%.2f", c)); w > maxCostWidth {
+			maxCostWidth = w
+		}
+	}
+
+	tokens := []int{todayTotalTokens, weekTotalTokens, monthTotalTokens}
+	maxTokenWidth := 0
+	for _, t := range tokens {
+		if w := len(formatTokens(t)); w > maxTokenWidth {
+			maxTokenWidth = w
+		}
+	}
+
 	// Create template data
 	data := SummaryData{
 		TotalCost:        totalMetrics.Cost,
@@ -729,6 +758,13 @@ func renderSummary(metricsByGroup map[string]Metrics, formatStr string, allRecor
 		Today:            todayMetrics,
 		ThisWeek:         weekMetrics,
 		ThisMonth:        monthMetrics,
+		// Pre-formatted aligned strings
+		TodayCost:       fmt.Sprintf("%*s", maxCostWidth, fmt.Sprintf("%.2f", todayMetrics.Cost)),
+		ThisWeekCost:    fmt.Sprintf("%*s", maxCostWidth, fmt.Sprintf("%.2f", weekMetrics.Cost)),
+		ThisMonthCost:   fmt.Sprintf("%*s", maxCostWidth, fmt.Sprintf("%.2f", monthMetrics.Cost)),
+		TodayTokens:     fmt.Sprintf("%*s", maxTokenWidth, formatTokens(todayTotalTokens)),
+		ThisWeekTokens:  fmt.Sprintf("%*s", maxTokenWidth, formatTokens(weekTotalTokens)),
+		ThisMonthTokens: fmt.Sprintf("%*s", maxTokenWidth, formatTokens(monthTotalTokens)),
 	}
 
 	// Parse and execute template
