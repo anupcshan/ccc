@@ -407,6 +407,37 @@ func getGroupConfig(groupBy string) GroupConfig {
 	return configs["day"]
 }
 
+// parseOutputFormat parses the unified -output flag value
+// Returns: outputKind ("table" or "summary"), groupBy string, template string
+func parseOutputFormat(format string) (string, string, string) {
+	// Check for table variants
+	if format == "table" {
+		return "table", "day", ""
+	}
+	if strings.HasPrefix(format, "table:") {
+		groupBy := strings.TrimPrefix(format, "table:")
+		// Validate groupBy
+		if groupBy != "day" && groupBy != "model" && groupBy != "day,model" {
+			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model)", groupBy)
+		}
+		return "table", groupBy, ""
+	}
+
+	// Check for named templates or custom templates
+	if _, ok := namedTemplates[format]; ok {
+		return "summary", "", format
+	}
+
+	// Custom template (contains {{ or assume it's a template)
+	if strings.Contains(format, "{{") {
+		return "summary", "", format
+	}
+
+	// Unknown format - treat as potential template name
+	log.Fatalf("Unknown output format: %s (valid: table, table:day, table:model, table:day,model, totalcost, totaltokens, costsummary, or custom Go template)", format)
+	return "", "", ""
+}
+
 // sortKeys sorts keys according to grouping strategy
 func sortKeys(keys []string, cfg GroupConfig) {
 	for i := 0; i < len(keys); i++ {
@@ -852,24 +883,42 @@ func renderHierarchical(table *tablewriter.Table, cfg GroupConfig, keys []string
 }
 
 func main() {
-	groupBy := flag.String("group-by", "day", "Group results by: day, model, day,model")
-	summary := flag.Bool("summary", false, "Display summary output instead of table")
-	summaryFormat := flag.String("summary-format", "totalcost", "Summary format: named template or custom Go template")
+	output := flag.String("output", "table", "Output format: table, table:day, table:model, table:day,model, totalcost, totaltokens, costsummary, or custom Go template")
+	flag.StringVar(output, "o", "table", "Output format (shorthand)")
 	cpuProfile := flag.String("cpuprofile", "", "Write CPU profile to file")
 	memProfile := flag.String("memprofile", "", "Write memory profile to file")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nNamed Templates:\n")
-		fmt.Fprintf(os.Stderr, "  totalcost    - Total cost in dollars (e.g., $239.75)\n")
-		fmt.Fprintf(os.Stderr, "  totaltokens  - Total token count (e.g., 366.5m)\n")
-		fmt.Fprintf(os.Stderr, "  costsummary  - Today/this week/this month breakdown\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "  -o, -output string\n")
+		fmt.Fprintf(os.Stderr, "        Output format (default \"table\")\n")
+		fmt.Fprintf(os.Stderr, "\nOutput Formats:\n")
+		fmt.Fprintf(os.Stderr, "  table            Table grouped by day (default)\n")
+		fmt.Fprintf(os.Stderr, "  table:day        Same as above\n")
+		fmt.Fprintf(os.Stderr, "  table:model      Table grouped by model\n")
+		fmt.Fprintf(os.Stderr, "  table:day,model  Table with day/model hierarchy\n")
+		fmt.Fprintf(os.Stderr, "  totalcost        Total cost only (e.g., $239.75)\n")
+		fmt.Fprintf(os.Stderr, "  totaltokens      Total tokens only (e.g., 366.5m)\n")
+		fmt.Fprintf(os.Stderr, "  costsummary      Today/week/month breakdown\n")
+		fmt.Fprintf(os.Stderr, "  {{...}}          Custom Go template\n")
+		fmt.Fprintf(os.Stderr, "\nTemplate Variables:\n")
+		fmt.Fprintf(os.Stderr, "  .TotalCost, .TotalTokens           Total cost/tokens\n")
+		fmt.Fprintf(os.Stderr, "  .InputTokens, .OutputTokens        Token counts by type\n")
+		fmt.Fprintf(os.Stderr, "  .CacheReadTokens, .CacheWriteTokens\n")
+		fmt.Fprintf(os.Stderr, "  .InputCost, .OutputCost            Costs by type\n")
+		fmt.Fprintf(os.Stderr, "  .CacheReadCost, .CacheWriteCost\n")
+		fmt.Fprintf(os.Stderr, "  .Today, .ThisWeek, .ThisMonth      Period breakdowns\n")
+		fmt.Fprintf(os.Stderr, "    (each has .Cost, .InputTokens, .OutputTokens, etc.)\n")
+		fmt.Fprintf(os.Stderr, "\nTemplate Functions:\n")
+		fmt.Fprintf(os.Stderr, "  formatTokens .TotalTokens          Format as 366.5m\n")
+		fmt.Fprintf(os.Stderr, "  printf \"%%.2f\" .TotalCost          Format with precision\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  %s -summary -summary-format=totalcost\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -summary -summary-format=costsummary\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -summary -summary-format='Total: {{formatTokens .TotalTokens}} tokens'\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -group-by=day,model\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s                    # table by day\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -o table:model     # table by model\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -o totalcost       # just total cost\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -o costsummary     # time breakdown\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -o '{{.TotalCost}}'# custom template\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -913,8 +962,11 @@ func main() {
 		log.Fatalf("Error walking directory: %v", err)
 	}
 
+	// Parse output format
+	outputKind, groupBy, templateStr := parseOutputFormat(*output)
+
 	// Get group configuration
-	cfg := getGroupConfig(*groupBy)
+	cfg := getGroupConfig(groupBy)
 
 	// Channel for cost records
 	costChan := make(chan CostRecord, 1000)
@@ -1049,10 +1101,10 @@ func main() {
 	close(costChan)
 	accWg.Wait()
 
-	// Render output based on flags
-	if *summary {
+	// Render output based on format
+	if outputKind == "summary" {
 		// Render summary using template
-		if err := renderSummary(metricsByGroup, *summaryFormat, allRecords); err != nil {
+		if err := renderSummary(metricsByGroup, templateStr, allRecords); err != nil {
 			log.Fatalf("Error rendering summary: %v", err)
 		}
 	} else {
