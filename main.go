@@ -34,6 +34,8 @@ type CostRecord struct {
 	CacheWriteCost   float64
 	PricingKey       string // Consolidated model name (opus, sonnet, sonnet-longcontext, haiku-3, etc.)
 	Timestamp        string
+	Hour             int    // Hour of day (0-23)
+	Weekday          string // Day of week (Mon, Tue, etc.)
 }
 
 // Metrics holds aggregated metrics for a group
@@ -51,10 +53,11 @@ type Metrics struct {
 
 // GroupConfig defines how to group and display data
 type GroupConfig struct {
-	LabelColumns  []string                             // Table column headers for labels
-	BuildGroupKey func(timestamp, model string) string // Creates group key from record
-	ParseGroupKey func(key string) []string            // Extracts labels from group key
-	Hierarchical  bool                                 // If true, shows subtotals (e.g., date totals in day,model)
+	LabelColumns  []string                       // Table column headers for labels
+	BuildGroupKey func(record CostRecord) string // Creates group key from record
+	ParseGroupKey func(key string) []string      // Extracts labels from group key
+	SortKey       func(key string) string        // Transforms key for sorting (nil = use key as-is)
+	Hierarchical  bool                           // If true, shows subtotals (e.g., date totals in day,model)
 }
 
 // formatTokens formats a token count in a human-readable way
@@ -370,8 +373,8 @@ func getGroupConfig(groupBy string) GroupConfig {
 	configs := map[string]GroupConfig{
 		"day": {
 			LabelColumns: []string{"Date"},
-			BuildGroupKey: func(timestamp, model string) string {
-				return timestamp
+			BuildGroupKey: func(record CostRecord) string {
+				return record.Timestamp
 			},
 			ParseGroupKey: func(key string) []string {
 				return []string{key}
@@ -380,8 +383,8 @@ func getGroupConfig(groupBy string) GroupConfig {
 		},
 		"model": {
 			LabelColumns: []string{"Model"},
-			BuildGroupKey: func(timestamp, model string) string {
-				return model
+			BuildGroupKey: func(record CostRecord) string {
+				return record.PricingKey
 			},
 			ParseGroupKey: func(key string) []string {
 				return []string{key}
@@ -390,13 +393,41 @@ func getGroupConfig(groupBy string) GroupConfig {
 		},
 		"day,model": {
 			LabelColumns: []string{"Date", "Model"},
-			BuildGroupKey: func(timestamp, model string) string {
-				return timestamp + "|" + model
+			BuildGroupKey: func(record CostRecord) string {
+				return record.Timestamp + "|" + record.PricingKey
 			},
 			ParseGroupKey: func(key string) []string {
 				return strings.Split(key, "|")
 			},
 			Hierarchical: true,
+		},
+		"hour": {
+			LabelColumns: []string{"Hour"},
+			BuildGroupKey: func(record CostRecord) string {
+				return fmt.Sprintf("%02d:00", record.Hour)
+			},
+			ParseGroupKey: func(key string) []string {
+				return []string{key}
+			},
+			Hierarchical: false,
+		},
+		"weekday": {
+			LabelColumns: []string{"Day"},
+			BuildGroupKey: func(record CostRecord) string {
+				return record.Weekday
+			},
+			ParseGroupKey: func(key string) []string {
+				return []string{key}
+			},
+			SortKey: func(key string) string {
+				// Sort weekdays in calendar order (Mon=1, Tue=2, ..., Sun=7)
+				order := map[string]string{"Mon": "1", "Tue": "2", "Wed": "3", "Thu": "4", "Fri": "5", "Sat": "6", "Sun": "7"}
+				if o, ok := order[key]; ok {
+					return o
+				}
+				return key
+			},
+			Hierarchical: false,
 		},
 	}
 
@@ -417,8 +448,9 @@ func parseOutputFormat(format string) (string, string, string) {
 	if strings.HasPrefix(format, "table:") {
 		groupBy := strings.TrimPrefix(format, "table:")
 		// Validate groupBy
-		if groupBy != "day" && groupBy != "model" && groupBy != "day,model" {
-			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model)", groupBy)
+		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true}
+		if !validGroupings[groupBy] {
+			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday)", groupBy)
 		}
 		return "table", groupBy, ""
 	}
@@ -434,12 +466,20 @@ func parseOutputFormat(format string) (string, string, string) {
 	}
 
 	// Unknown format - treat as potential template name
-	log.Fatalf("Unknown output format: %s (valid: table, table:day, table:model, table:day,model, totalcost, totaltokens, costsummary, or custom Go template)", format)
+	log.Fatalf("Unknown output format: %s (valid: table, table:day, table:model, table:day,model, table:hour, table:weekday, totalcost, totaltokens, costsummary, or custom Go template)", format)
 	return "", "", ""
 }
 
 // sortKeys sorts keys according to grouping strategy
 func sortKeys(keys []string, cfg GroupConfig) {
+	// Helper to get sort key for a given key
+	getSortKey := func(key string) string {
+		if cfg.SortKey != nil {
+			return cfg.SortKey(key)
+		}
+		return key
+	}
+
 	for i := 0; i < len(keys); i++ {
 		for j := i + 1; j < len(keys); j++ {
 			if cfg.Hierarchical {
@@ -459,8 +499,8 @@ func sortKeys(keys []string, cfg GroupConfig) {
 					keys[i], keys[j] = keys[j], keys[i]
 				}
 			} else {
-				// Simple string comparison for flat groupings
-				if keys[i] > keys[j] {
+				// Use sort key for comparison
+				if getSortKey(keys[i]) > getSortKey(keys[j]) {
 					keys[i], keys[j] = keys[j], keys[i]
 				}
 			}
@@ -661,11 +701,11 @@ type SummaryData struct {
 	ThisWeek  Metrics
 	ThisMonth Metrics
 	// Pre-formatted strings for aligned output
-	TodayCost      string
-	ThisWeekCost   string
-	ThisMonthCost  string
-	TodayTokens    string
-	ThisWeekTokens string
+	TodayCost       string
+	ThisWeekCost    string
+	ThisMonthCost   string
+	TodayTokens     string
+	ThisWeekTokens  string
 	ThisMonthTokens string
 }
 
@@ -898,6 +938,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  table:day        Same as above\n")
 		fmt.Fprintf(os.Stderr, "  table:model      Table grouped by model\n")
 		fmt.Fprintf(os.Stderr, "  table:day,model  Table with day/model hierarchy\n")
+		fmt.Fprintf(os.Stderr, "  table:hour       Table grouped by hour of day\n")
+		fmt.Fprintf(os.Stderr, "  table:weekday    Table grouped by day of week\n")
 		fmt.Fprintf(os.Stderr, "  totalcost        Total cost only (e.g., $239.75)\n")
 		fmt.Fprintf(os.Stderr, "  totaltokens      Total tokens only (e.g., 366.5m)\n")
 		fmt.Fprintf(os.Stderr, "  costsummary      Today/week/month breakdown\n")
@@ -992,7 +1034,7 @@ func main() {
 				}
 			} else {
 				// No requestId, accumulate immediately
-				groupKey := cfg.BuildGroupKey(record.Timestamp, record.PricingKey)
+				groupKey := cfg.BuildGroupKey(record)
 				m := metricsByGroup[groupKey]
 				m.Cost += record.Cost
 				m.InputTokens += record.InputTokens
@@ -1010,7 +1052,7 @@ func main() {
 
 		// Now accumulate the max cost for each requestID
 		for _, record := range maxCostByRequestID {
-			groupKey := cfg.BuildGroupKey(record.Timestamp, record.PricingKey)
+			groupKey := cfg.BuildGroupKey(record)
 			m := metricsByGroup[groupKey]
 			m.Cost += record.Cost
 			m.InputTokens += record.InputTokens
@@ -1049,6 +1091,7 @@ func main() {
 					continue
 				}
 
+				localTime := entry.Timestamp.Local()
 				record := CostRecord{
 					RequestID:        entry.RequestID,
 					Cost:             cost,
@@ -1061,7 +1104,9 @@ func main() {
 					CacheReadCost:    cacheReadCost,
 					CacheWriteCost:   cacheWriteCost,
 					PricingKey:       pricingKey,
-					Timestamp:        entry.Timestamp.Local().Format("2006-01-02"),
+					Timestamp:        localTime.Format("2006-01-02"),
+					Hour:             localTime.Hour(),
+					Weekday:          localTime.Weekday().String()[:3],
 				}
 				costChan <- record
 			}
