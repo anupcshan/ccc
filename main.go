@@ -18,6 +18,7 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
 	"github.com/olekukonko/tablewriter/tw"
+	"golang.org/x/term"
 )
 
 // CostRecord represents a record to accumulate
@@ -58,6 +59,24 @@ type GroupConfig struct {
 	ParseGroupKey func(key string) []string      // Extracts labels from group key
 	SortKey       func(key string) string        // Transforms key for sorting (nil = use key as-is)
 	Hierarchical  bool                           // If true, shows subtotals (e.g., date totals in day,model)
+}
+
+// DisplayMode determines how much detail to show in table output
+type DisplayMode int
+
+const (
+	DisplayWide   DisplayMode = iota // All columns with tokens + cost
+	DisplayMedium                    // Tokens only for breakdown, tokens + cost for Total
+	DisplayNarrow                    // Just label + Total (tokens + cost)
+)
+
+// getTerminalWidth returns the terminal width, or 0 if not a terminal
+func getTerminalWidth() int {
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 0 // Not a terminal or error
+	}
+	return width
 }
 
 // formatTokens formats a token count in a human-readable way
@@ -177,6 +196,12 @@ type ColumnWidths struct {
 	CacheWriteCostWidth  int
 	TotalTokenWidth      int
 	TotalCostWidth       int
+	// Cell widths for width calculation (tokens + gap + cost)
+	InputCellWidth      int
+	OutputCellWidth     int
+	CacheReadCellWidth  int
+	CacheWriteCellWidth int
+	TotalCellWidth      int
 }
 
 // calculateColumnWidths determines the maximum width needed for each column
@@ -185,44 +210,131 @@ func calculateColumnWidths(metricsByGroup map[string]Metrics) ColumnWidths {
 
 	for _, m := range metricsByGroup {
 		// Token widths
-		if w := len(formatTokens(m.InputTokens)); w > widths.InputTokenWidth {
-			widths.InputTokenWidth = w
+		inputTokenW := len(formatTokens(m.InputTokens))
+		if inputTokenW > widths.InputTokenWidth {
+			widths.InputTokenWidth = inputTokenW
 		}
-		if w := len(formatTokens(m.OutputTokens)); w > widths.OutputTokenWidth {
-			widths.OutputTokenWidth = w
+		outputTokenW := len(formatTokens(m.OutputTokens))
+		if outputTokenW > widths.OutputTokenWidth {
+			widths.OutputTokenWidth = outputTokenW
 		}
-		if w := len(formatTokens(m.CacheReadTokens)); w > widths.CacheReadTokenWidth {
-			widths.CacheReadTokenWidth = w
+		cacheReadTokenW := len(formatTokens(m.CacheReadTokens))
+		if cacheReadTokenW > widths.CacheReadTokenWidth {
+			widths.CacheReadTokenWidth = cacheReadTokenW
 		}
-		if w := len(formatTokens(m.CacheWriteTokens)); w > widths.CacheWriteTokenWidth {
-			widths.CacheWriteTokenWidth = w
+		cacheWriteTokenW := len(formatTokens(m.CacheWriteTokens))
+		if cacheWriteTokenW > widths.CacheWriteTokenWidth {
+			widths.CacheWriteTokenWidth = cacheWriteTokenW
 		}
 
 		// Total tokens width
 		totalTokens := m.InputTokens + m.OutputTokens + m.CacheReadTokens + m.CacheWriteTokens
-		if w := len(formatTokens(totalTokens)); w > widths.TotalTokenWidth {
-			widths.TotalTokenWidth = w
+		totalTokenW := len(formatTokens(totalTokens))
+		if totalTokenW > widths.TotalTokenWidth {
+			widths.TotalTokenWidth = totalTokenW
 		}
 
 		// Cost widths (includes $)
-		if w := len(fmt.Sprintf("$%.2f", m.InputCost)); w > widths.InputCostWidth {
-			widths.InputCostWidth = w
+		inputCostW := len(fmt.Sprintf("$%.2f", m.InputCost))
+		if inputCostW > widths.InputCostWidth {
+			widths.InputCostWidth = inputCostW
 		}
-		if w := len(fmt.Sprintf("$%.2f", m.OutputCost)); w > widths.OutputCostWidth {
-			widths.OutputCostWidth = w
+		outputCostW := len(fmt.Sprintf("$%.2f", m.OutputCost))
+		if outputCostW > widths.OutputCostWidth {
+			widths.OutputCostWidth = outputCostW
 		}
-		if w := len(fmt.Sprintf("$%.2f", m.CacheReadCost)); w > widths.CacheReadCostWidth {
-			widths.CacheReadCostWidth = w
+		cacheReadCostW := len(fmt.Sprintf("$%.2f", m.CacheReadCost))
+		if cacheReadCostW > widths.CacheReadCostWidth {
+			widths.CacheReadCostWidth = cacheReadCostW
 		}
-		if w := len(fmt.Sprintf("$%.2f", m.CacheWriteCost)); w > widths.CacheWriteCostWidth {
-			widths.CacheWriteCostWidth = w
+		cacheWriteCostW := len(fmt.Sprintf("$%.2f", m.CacheWriteCost))
+		if cacheWriteCostW > widths.CacheWriteCostWidth {
+			widths.CacheWriteCostWidth = cacheWriteCostW
 		}
-		if w := len(fmt.Sprintf("$%.2f", m.Cost)); w > widths.TotalCostWidth {
-			widths.TotalCostWidth = w
+		totalCostW := len(fmt.Sprintf("$%.2f", m.Cost))
+		if totalCostW > widths.TotalCostWidth {
+			widths.TotalCostWidth = totalCostW
+		}
+
+		// Cell widths (actual width of token + 2 space gap + cost for this row)
+		if cellW := inputTokenW + 2 + inputCostW; cellW > widths.InputCellWidth {
+			widths.InputCellWidth = cellW
+		}
+		if cellW := outputTokenW + 2 + outputCostW; cellW > widths.OutputCellWidth {
+			widths.OutputCellWidth = cellW
+		}
+		if cellW := cacheReadTokenW + 2 + cacheReadCostW; cellW > widths.CacheReadCellWidth {
+			widths.CacheReadCellWidth = cellW
+		}
+		if cellW := cacheWriteTokenW + 2 + cacheWriteCostW; cellW > widths.CacheWriteCellWidth {
+			widths.CacheWriteCellWidth = cellW
+		}
+		if cellW := totalTokenW + 2 + totalCostW; cellW > widths.TotalCellWidth {
+			widths.TotalCellWidth = cellW
 		}
 	}
 
 	return widths
+}
+
+// calculateTableWidth estimates the total table width for a given display mode
+// Table structure: │ col1 │ col2 │ ... │ colN │
+// Width = (N+1) borders + N*(2 padding) + sum(content widths)
+func calculateTableWidth(labelWidth int, numLabelCols int, widths ColumnWidths, mode DisplayMode) int {
+	var contentWidth int
+
+	switch mode {
+	case DisplayWide:
+		// All columns: use actual cell widths (max of token+gap+cost per row)
+		contentWidth = labelWidth*numLabelCols +
+			widths.InputCellWidth +
+			widths.OutputCellWidth +
+			widths.CacheReadCellWidth +
+			widths.CacheWriteCellWidth +
+			widths.TotalCellWidth
+	case DisplayMedium:
+		// Breakdown columns: tokens only; Total: cell width
+		contentWidth = labelWidth*numLabelCols +
+			widths.InputTokenWidth +
+			widths.OutputTokenWidth +
+			widths.CacheReadTokenWidth +
+			widths.CacheWriteTokenWidth +
+			widths.TotalCellWidth
+	case DisplayNarrow:
+		// Just label + Total cell width
+		contentWidth = labelWidth*numLabelCols +
+			widths.TotalCellWidth
+	}
+
+	numCols := numLabelCols + 5 // 5 metric columns for wide/medium
+	if mode == DisplayNarrow {
+		numCols = numLabelCols + 1 // just Total
+	}
+
+	// borders (numCols + 1) + padding (2 per column)
+	return contentWidth + (numCols + 1) + (numCols * 2)
+}
+
+// chooseDisplayMode selects the best display mode that fits the terminal width
+func chooseDisplayMode(labelWidth int, numLabelCols int, widths ColumnWidths, termWidth int) DisplayMode {
+	// Allow override for testing
+	if maxWidthOverride > 0 {
+		termWidth = maxWidthOverride
+	}
+
+	// If no terminal (piped output), use wide mode
+	if termWidth == 0 {
+		return DisplayWide
+	}
+
+	// Try modes from widest to narrowest
+	if calculateTableWidth(labelWidth, numLabelCols, widths, DisplayWide) <= termWidth {
+		return DisplayWide
+	}
+	if calculateTableWidth(labelWidth, numLabelCols, widths, DisplayMedium) <= termWidth {
+		return DisplayMedium
+	}
+	return DisplayNarrow
 }
 
 // HeatmapData stores min/max values for calculating color intensities
@@ -237,6 +349,14 @@ type HeatmapData struct {
 	MaxCacheWrite float64
 	MinTotal      float64
 	MaxTotal      float64
+}
+
+// formatTokensColored formats tokens with ANSI color based on intensity
+func formatTokensColored(tokens int, tokenWidth int, intensity float64, colorScheme string) string {
+	tokenStr := formatTokens(tokens)
+	color := getColorForIntensity(intensity, colorScheme)
+	formatted := fmt.Sprintf("%*s", tokenWidth, tokenStr)
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", color[0], color[1], color[2], formatted)
 }
 
 // buildMetricsColumns creates the token and cost columns for a table row
@@ -289,6 +409,36 @@ func buildMetricsColumnsWithMixedHeatmap(m Metrics, widths ColumnWidths, mainHea
 		formatTokensWithCostColored(m.OutputTokens, m.OutputCost, widths.OutputTokenWidth, widths.OutputCostWidth, outputIntensity, "blue"),
 		formatTokensWithCostColored(m.CacheReadTokens, m.CacheReadCost, widths.CacheReadTokenWidth, widths.CacheReadCostWidth, cacheReadIntensity, "blue"),
 		formatTokensWithCostColored(m.CacheWriteTokens, m.CacheWriteCost, widths.CacheWriteTokenWidth, widths.CacheWriteCostWidth, cacheWriteIntensity, "blue"),
+		formatTokensWithCostColored(totalTokens, m.Cost, widths.TotalTokenWidth, widths.TotalCostWidth, totalIntensity, "orange"),
+	}
+}
+
+// buildMetricsColumnsMedium creates columns for medium mode: tokens only for breakdown, tokens+cost for Total
+func buildMetricsColumnsMedium(m Metrics, widths ColumnWidths, mainHeatmap HeatmapData, totalColumnHeatmap HeatmapData) []string {
+	totalTokens := m.InputTokens + m.OutputTokens + m.CacheReadTokens + m.CacheWriteTokens
+
+	// Calculate intensities
+	inputIntensity := calculateIntensity(m.InputCost, mainHeatmap.MinInput, mainHeatmap.MaxInput)
+	outputIntensity := calculateIntensity(m.OutputCost, mainHeatmap.MinOutput, mainHeatmap.MaxOutput)
+	cacheReadIntensity := calculateIntensity(m.CacheReadCost, mainHeatmap.MinCacheRead, mainHeatmap.MaxCacheRead)
+	cacheWriteIntensity := calculateIntensity(m.CacheWriteCost, mainHeatmap.MinCacheWrite, mainHeatmap.MaxCacheWrite)
+	totalIntensity := calculateIntensity(m.Cost, totalColumnHeatmap.MinTotal, totalColumnHeatmap.MaxTotal)
+
+	return []string{
+		formatTokensColored(m.InputTokens, widths.InputTokenWidth, inputIntensity, "blue"),
+		formatTokensColored(m.OutputTokens, widths.OutputTokenWidth, outputIntensity, "blue"),
+		formatTokensColored(m.CacheReadTokens, widths.CacheReadTokenWidth, cacheReadIntensity, "blue"),
+		formatTokensColored(m.CacheWriteTokens, widths.CacheWriteTokenWidth, cacheWriteIntensity, "blue"),
+		formatTokensWithCostColored(totalTokens, m.Cost, widths.TotalTokenWidth, widths.TotalCostWidth, totalIntensity, "orange"),
+	}
+}
+
+// buildMetricsColumnsNarrow creates columns for narrow mode: just Total (tokens + cost)
+func buildMetricsColumnsNarrow(m Metrics, widths ColumnWidths, totalColumnHeatmap HeatmapData) []string {
+	totalTokens := m.InputTokens + m.OutputTokens + m.CacheReadTokens + m.CacheWriteTokens
+	totalIntensity := calculateIntensity(m.Cost, totalColumnHeatmap.MinTotal, totalColumnHeatmap.MaxTotal)
+
+	return []string{
 		formatTokensWithCostColored(totalTokens, m.Cost, widths.TotalTokenWidth, widths.TotalCostWidth, totalIntensity, "orange"),
 	}
 }
@@ -510,36 +660,7 @@ func sortKeys(keys []string, cfg GroupConfig) {
 
 // renderTable renders the table with metrics
 func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metrics) {
-	// Create table
-	table := tablewriter.NewTable(os.Stdout,
-		tablewriter.WithRenderer(renderer.NewBlueprint(tw.Rendition{
-			Settings: tw.Settings{Separators: tw.Separators{BetweenRows: tw.On}},
-		})))
-
-	// Build headers (combined columns)
-	headers := append(cfg.LabelColumns,
-		"Input",
-		"Output",
-		"Cache Read",
-		"Cache Write",
-		"Total")
-	table.Header(headers)
-
-	// Configure alignment (labels left, metrics right)
-	alignments := make([]tw.Align, len(headers))
-	for i := range alignments {
-		if i < len(cfg.LabelColumns) {
-			alignments[i] = tw.AlignLeft
-		} else {
-			alignments[i] = tw.AlignRight
-		}
-	}
-	table.Configure(func(c *tablewriter.Config) {
-		c.Row.Alignment.PerColumn = alignments
-		c.Row.Formatting = tw.CellFormatting{MergeMode: tw.MergeHierarchical}
-	})
-
-	// Accumulate totals
+	// Accumulate totals first (needed for width calculations)
 	totalMetrics := Metrics{}
 	for _, key := range keys {
 		m := metricsByGroup[key]
@@ -561,6 +682,57 @@ func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metri
 	}
 	allMetrics["__total__"] = totalMetrics
 	widths := calculateColumnWidths(allMetrics)
+
+	// Calculate max label width for display mode selection
+	maxLabelWidth := 0
+	for _, key := range keys {
+		labels := cfg.ParseGroupKey(key)
+		for _, label := range labels {
+			if len(label) > maxLabelWidth {
+				maxLabelWidth = len(label)
+			}
+		}
+	}
+	// Account for "Total" label in footer
+	if len("Total") > maxLabelWidth {
+		maxLabelWidth = len("Total")
+	}
+
+	// Choose display mode based on terminal width
+	termWidth := getTerminalWidth()
+	displayMode := chooseDisplayMode(maxLabelWidth, len(cfg.LabelColumns), widths, termWidth)
+
+	// Create table
+	table := tablewriter.NewTable(os.Stdout,
+		tablewriter.WithRenderer(renderer.NewBlueprint(tw.Rendition{
+			Settings: tw.Settings{Separators: tw.Separators{BetweenRows: tw.On}},
+		})))
+
+	// Build headers based on display mode
+	var headers []string
+	switch displayMode {
+	case DisplayWide:
+		headers = append(cfg.LabelColumns, "Input", "Output", "Cache Read", "Cache Write", "Total")
+	case DisplayMedium:
+		headers = append(cfg.LabelColumns, "Input", "Output", "Cache Read", "Cache Write", "Total")
+	case DisplayNarrow:
+		headers = append(cfg.LabelColumns, "Total")
+	}
+	table.Header(headers)
+
+	// Configure alignment (labels left, metrics right)
+	alignments := make([]tw.Align, len(headers))
+	for i := range alignments {
+		if i < len(cfg.LabelColumns) {
+			alignments[i] = tw.AlignLeft
+		} else {
+			alignments[i] = tw.AlignRight
+		}
+	}
+	table.Configure(func(c *tablewriter.Config) {
+		c.Row.Alignment.PerColumn = alignments
+		c.Row.Formatting = tw.CellFormatting{MergeMode: tw.MergeHierarchical}
+	})
 
 	// Calculate heatmaps for three zones:
 	// 1. Main data cells (blue)
@@ -650,17 +822,24 @@ func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metri
 
 	if cfg.Hierarchical {
 		// Hierarchical rendering (e.g., day,model with date subtotals)
-		renderHierarchical(table, cfg, keys, metricsByGroup, totalMetrics, widths, mainHeatmap, totalColumnHeatmap, totalRowHeatmap)
+		renderHierarchical(table, cfg, keys, metricsByGroup, totalMetrics, widths, mainHeatmap, totalColumnHeatmap, totalRowHeatmap, displayMode)
 	} else {
 		// Flat rendering
 		for _, key := range keys {
 			labels := cfg.ParseGroupKey(key)
-			// Main data cells use blue heatmap, but Total column uses orange
-			metricsColumns := buildMetricsColumnsWithMixedHeatmap(metricsByGroup[key], widths, mainHeatmap, totalColumnHeatmap)
+			var metricsColumns []string
+			switch displayMode {
+			case DisplayWide:
+				metricsColumns = buildMetricsColumnsWithMixedHeatmap(metricsByGroup[key], widths, mainHeatmap, totalColumnHeatmap)
+			case DisplayMedium:
+				metricsColumns = buildMetricsColumnsMedium(metricsByGroup[key], widths, mainHeatmap, totalColumnHeatmap)
+			case DisplayNarrow:
+				metricsColumns = buildMetricsColumnsNarrow(metricsByGroup[key], widths, totalColumnHeatmap)
+			}
 			table.Append(append(labels, metricsColumns...))
 		}
 
-		// Footer with total (uses purple heatmap)
+		// Footer with total
 		footerLabels := make([]string, len(cfg.LabelColumns))
 		for i := range footerLabels {
 			if i == len(footerLabels)-1 {
@@ -669,7 +848,16 @@ func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metri
 				footerLabels[i] = ""
 			}
 		}
-		table.Footer(append(footerLabels, buildMetricsColumnsColored(totalMetrics, widths, totalRowHeatmap, "purple")...))
+		var footerMetrics []string
+		switch displayMode {
+		case DisplayWide:
+			footerMetrics = buildMetricsColumnsColored(totalMetrics, widths, totalRowHeatmap, "purple")
+		case DisplayMedium:
+			footerMetrics = buildMetricsColumnsMedium(totalMetrics, widths, totalRowHeatmap, totalRowHeatmap)
+		case DisplayNarrow:
+			footerMetrics = buildMetricsColumnsNarrow(totalMetrics, widths, totalRowHeatmap)
+		}
+		table.Footer(append(footerLabels, footerMetrics...))
 	}
 
 	table.Render()
@@ -859,7 +1047,7 @@ func renderSummary(metricsByGroup map[string]Metrics, formatStr string, allRecor
 }
 
 // renderHierarchical renders hierarchical groupings with subtotals
-func renderHierarchical(table *tablewriter.Table, cfg GroupConfig, keys []string, metricsByGroup map[string]Metrics, totalMetrics Metrics, widths ColumnWidths, mainHeatmap HeatmapData, totalColumnHeatmap HeatmapData, totalRowHeatmap HeatmapData) {
+func renderHierarchical(table *tablewriter.Table, cfg GroupConfig, keys []string, metricsByGroup map[string]Metrics, totalMetrics Metrics, widths ColumnWidths, mainHeatmap HeatmapData, totalColumnHeatmap HeatmapData, totalRowHeatmap HeatmapData, displayMode DisplayMode) {
 	// Group by first label (e.g., date in day,model)
 	groupsByFirst := make(map[string][]string)
 	for _, key := range keys {
@@ -901,30 +1089,57 @@ func renderHierarchical(table *tablewriter.Table, cfg GroupConfig, keys []string
 			subtotal.CacheWriteCost += m.CacheWriteCost
 		}
 
-		// Render subtotal row - uses orange for Total column only (subtotal)
+		// Render subtotal row
 		subtotalLabels := []string{firstKey, "Total"}
-		// For subtotal rows, we want: blue for first 4, orange for Total
-		subtotalColumns := buildMetricsColumnsWithMixedHeatmap(subtotal, widths, mainHeatmap, totalColumnHeatmap)
+		var subtotalColumns []string
+		switch displayMode {
+		case DisplayWide:
+			subtotalColumns = buildMetricsColumnsWithMixedHeatmap(subtotal, widths, mainHeatmap, totalColumnHeatmap)
+		case DisplayMedium:
+			subtotalColumns = buildMetricsColumnsMedium(subtotal, widths, mainHeatmap, totalColumnHeatmap)
+		case DisplayNarrow:
+			subtotalColumns = buildMetricsColumnsNarrow(subtotal, widths, totalColumnHeatmap)
+		}
 		table.Append(append(subtotalLabels, subtotalColumns...))
 
 		// Sort and render detail rows
 		sortKeys(groupKeys, cfg)
 		for _, key := range groupKeys {
 			labels := cfg.ParseGroupKey(key)
-			// Main data rows: blue for first 4, orange for Total
-			metricsColumns := buildMetricsColumnsWithMixedHeatmap(metricsByGroup[key], widths, mainHeatmap, totalColumnHeatmap)
+			var metricsColumns []string
+			switch displayMode {
+			case DisplayWide:
+				metricsColumns = buildMetricsColumnsWithMixedHeatmap(metricsByGroup[key], widths, mainHeatmap, totalColumnHeatmap)
+			case DisplayMedium:
+				metricsColumns = buildMetricsColumnsMedium(metricsByGroup[key], widths, mainHeatmap, totalColumnHeatmap)
+			case DisplayNarrow:
+				metricsColumns = buildMetricsColumnsNarrow(metricsByGroup[key], widths, totalColumnHeatmap)
+			}
 			table.Append(append(labels, metricsColumns...))
 		}
 	}
 
-	// Footer with grand total (uses purple heatmap for entire row)
+	// Footer with grand total
 	footerLabels := []string{"", "Total"}
-	table.Footer(append(footerLabels, buildMetricsColumnsColored(totalMetrics, widths, totalRowHeatmap, "purple")...))
+	var footerMetrics []string
+	switch displayMode {
+	case DisplayWide:
+		footerMetrics = buildMetricsColumnsColored(totalMetrics, widths, totalRowHeatmap, "purple")
+	case DisplayMedium:
+		footerMetrics = buildMetricsColumnsMedium(totalMetrics, widths, totalRowHeatmap, totalRowHeatmap)
+	case DisplayNarrow:
+		footerMetrics = buildMetricsColumnsNarrow(totalMetrics, widths, totalRowHeatmap)
+	}
+	table.Footer(append(footerLabels, footerMetrics...))
 }
+
+// maxWidthOverride is set by the undocumented -maxwidth flag for testing
+var maxWidthOverride int
 
 func main() {
 	output := flag.String("output", "table", "Output format: table, table:day, table:model, table:day,model, totalcost, totaltokens, costsummary, or custom Go template")
 	flag.StringVar(output, "o", "table", "Output format (shorthand)")
+	flag.IntVar(&maxWidthOverride, "maxwidth", 0, "")
 	cpuProfile := flag.String("cpuprofile", "", "Write CPU profile to file")
 	memProfile := flag.String("memprofile", "", "Write memory profile to file")
 
