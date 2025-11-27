@@ -97,15 +97,6 @@ func formatTokens(tokens int) string {
 	}
 }
 
-// formatTokensWithCost combines tokens and cost in a single string with padding for alignment
-func formatTokensWithCost(tokens int, cost float64, tokenWidth, costWidth int) string {
-	tokenStr := formatTokens(tokens)
-	costStr := fmt.Sprintf("$%.2f", cost)
-
-	// Right-align both token string and cost for proper alignment (with extra space for readability)
-	return fmt.Sprintf("%*s  %*s", tokenWidth, tokenStr, costWidth, costStr)
-}
-
 // formatTokensWithCostColored combines tokens and cost with ANSI color based on intensity
 func formatTokensWithCostColored(tokens int, cost float64, tokenWidth, costWidth int, intensity float64, colorScheme string) string {
 	tokenStr := formatTokens(tokens)
@@ -357,18 +348,6 @@ func formatTokensColored(tokens int, tokenWidth int, intensity float64, colorSch
 	color := getColorForIntensity(intensity, colorScheme)
 	formatted := fmt.Sprintf("%*s", tokenWidth, tokenStr)
 	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", color[0], color[1], color[2], formatted)
-}
-
-// buildMetricsColumns creates the token and cost columns for a table row
-func buildMetricsColumns(m Metrics, widths ColumnWidths) []string {
-	totalTokens := m.InputTokens + m.OutputTokens + m.CacheReadTokens + m.CacheWriteTokens
-	return []string{
-		formatTokensWithCost(m.InputTokens, m.InputCost, widths.InputTokenWidth, widths.InputCostWidth),
-		formatTokensWithCost(m.OutputTokens, m.OutputCost, widths.OutputTokenWidth, widths.OutputCostWidth),
-		formatTokensWithCost(m.CacheReadTokens, m.CacheReadCost, widths.CacheReadTokenWidth, widths.CacheReadCostWidth),
-		formatTokensWithCost(m.CacheWriteTokens, m.CacheWriteCost, widths.CacheWriteTokenWidth, widths.CacheWriteCostWidth),
-		formatTokensWithCost(totalTokens, m.Cost, widths.TotalTokenWidth, widths.TotalCostWidth),
-	}
 }
 
 // buildMetricsColumnsColored creates colored token and cost columns based on heatmap
@@ -861,15 +840,6 @@ func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metri
 	}
 
 	table.Render()
-}
-
-// Pool for scanner buffers to avoid repeated 10MB allocations
-var scannerBufferPool = sync.Pool{
-	New: func() interface{} {
-		const maxCapacity = 10 * 1024 * 1024
-		buf := make([]byte, maxCapacity)
-		return &buf
-	},
 }
 
 // SummaryData holds data for template rendering
