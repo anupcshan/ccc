@@ -23,6 +23,7 @@ import (
 
 // CostRecord represents a record to accumulate
 type CostRecord struct {
+	UUID             string
 	RequestID        *string
 	Cost             float64
 	InputTokens      int
@@ -35,8 +36,11 @@ type CostRecord struct {
 	CacheWriteCost   float64
 	PricingKey       string // Consolidated model name (opus, sonnet, sonnet-longcontext, haiku-3, etc.)
 	Timestamp        string
-	Hour             int    // Hour of day (0-23)
-	Weekday          string // Day of week (Mon, Tue, etc.)
+	FullTimestamp    time.Time // Full timestamp for history file bucketing
+	Hour             int       // Hour of day (0-23)
+	Weekday          string    // Day of week (Mon, Tue, etc.)
+	FromHistory      bool      // True if record came from history file
+	RawLine          []byte    // Original JSON line (for saving to history)
 }
 
 // Metrics holds aggregated metrics for a group
@@ -50,6 +54,18 @@ type Metrics struct {
 	OutputCost       float64
 	CacheReadCost    float64
 	CacheWriteCost   float64
+}
+
+// LineWork carries a line through the pipeline with source info
+type LineWork struct {
+	Line        []byte
+	FromHistory bool
+}
+
+// FileWork carries a file path with source info
+type FileWork struct {
+	Path        string
+	FromHistory bool
 }
 
 // GroupConfig defines how to group and display data
@@ -1189,6 +1205,18 @@ func main() {
 		log.Fatalf("Error walking directory: %v", err)
 	}
 
+	// Load history files
+	historyFiles, err := ListHistoryFiles()
+	if err != nil {
+		log.Printf("Warning: could not list history files: %v", err)
+	}
+
+	// Track which history files we've loaded (for dedup during save)
+	loadedHistoryFiles := make(map[string]bool)
+	for _, f := range historyFiles {
+		loadedHistoryFiles[f] = true
+	}
+
 	// Parse output format
 	outputKind, groupBy, templateStr := parseOutputFormat(*output)
 
@@ -1203,22 +1231,56 @@ func main() {
 	accWg.Add(1)
 	metricsByGroup := make(map[string]Metrics)
 	var allRecords []CostRecord
+	var claudeRecords []CostRecord            // Records from Claude logs (for saving to history)
+	historyUUIDs := make(map[string]bool)     // UUIDs already in history (for dedup)
+	var claudeMinTime, claudeMaxTime time.Time      // Time range of Claude records
+	var claudeTimeInitialized bool
 	go func() {
 		defer accWg.Done()
 		// Track the maximum cost record for each requestID
 		maxCostByRequestID := make(map[string]CostRecord)
+		// Track UUIDs we've seen (for records without requestID)
+		seenUUIDs := make(map[string]bool)
 
 		for record := range costChan {
+			// Track UUIDs from history files (for save dedup)
+			if record.FromHistory && record.UUID != "" {
+				historyUUIDs[record.UUID] = true
+			}
+
+			// Track ALL Claude records for saving (raw lines)
+			if !record.FromHistory && len(record.RawLine) > 0 {
+				claudeRecords = append(claudeRecords, record)
+				// Track time range
+				if !claudeTimeInitialized {
+					claudeMinTime = record.FullTimestamp
+					claudeMaxTime = record.FullTimestamp
+					claudeTimeInitialized = true
+				} else {
+					if record.FullTimestamp.Before(claudeMinTime) {
+						claudeMinTime = record.FullTimestamp
+					}
+					if record.FullTimestamp.After(claudeMaxTime) {
+						claudeMaxTime = record.FullTimestamp
+					}
+				}
+			}
+
+			// Metrics: dedupe by requestID (keep max cost) or UUID (for no-requestId records)
 			if record.RequestID != nil {
-				// Track the record with maximum cost for this requestID
 				if existing, seen := maxCostByRequestID[*record.RequestID]; !seen {
 					maxCostByRequestID[*record.RequestID] = record
 				} else if record.Cost > existing.Cost {
-					// Found a record with higher cost - update
 					maxCostByRequestID[*record.RequestID] = record
 				}
 			} else {
-				// No requestId, accumulate immediately
+				// No requestId - dedupe by UUID for metrics
+				if record.UUID != "" && seenUUIDs[record.UUID] {
+					continue
+				}
+				if record.UUID != "" {
+					seenUUIDs[record.UUID] = true
+				}
 				groupKey := cfg.BuildGroupKey(record)
 				m := metricsByGroup[groupKey]
 				m.Cost += record.Cost
@@ -1235,7 +1297,7 @@ func main() {
 			}
 		}
 
-		// Now accumulate the max cost for each requestID
+		// Accumulate metrics for records with requestID
 		for _, record := range maxCostByRequestID {
 			groupKey := cfg.BuildGroupKey(record)
 			m := metricsByGroup[groupKey]
@@ -1254,17 +1316,17 @@ func main() {
 	}()
 
 	// Global channel for lines to parse
-	lineChan := make(chan []byte, 1000)
+	lineChan := make(chan LineWork, 1000)
 
 	// Start global worker pool for parsing lines
 	var lineWg sync.WaitGroup
 	numLineWorkers := runtime.NumCPU()
 	for range numLineWorkers {
 		lineWg.Go(func() {
-			for line := range lineChan {
+			for work := range lineChan {
 				var entry ConversationEntry
-				if err := json.Unmarshal(line, &entry); err != nil {
-					log.Printf("Error decoding line: %v", err)
+				if err := json.Unmarshal(work.Line, &entry); err != nil {
+					// Skip corrupted/partial lines (expected for history files after crash)
 					continue
 				}
 
@@ -1278,6 +1340,7 @@ func main() {
 
 				localTime := entry.Timestamp.Local()
 				record := CostRecord{
+					UUID:             entry.UUID,
 					RequestID:        entry.RequestID,
 					Cost:             cost,
 					InputTokens:      inputTokens,
@@ -1290,8 +1353,11 @@ func main() {
 					CacheWriteCost:   cacheWriteCost,
 					PricingKey:       pricingKey,
 					Timestamp:        localTime.Format("2006-01-02"),
+					FullTimestamp:    localTime,
 					Hour:             localTime.Hour(),
 					Weekday:          localTime.Weekday().String()[:3],
+					FromHistory:      work.FromHistory,
+					RawLine:          work.Line, // Keep raw line for saving to history
 				}
 				costChan <- record
 			}
@@ -1300,24 +1366,29 @@ func main() {
 
 	// Process files in parallel
 	var fileWg sync.WaitGroup
-	fileChan := make(chan string, len(jsonlFiles))
+	fileChan := make(chan FileWork, len(jsonlFiles)+len(historyFiles))
 
 	// Start worker pool for file reading
 	numFileWorkers := min(runtime.NumCPU(), 4)
 	for range numFileWorkers {
 		fileWg.Go(func() {
 			buf := make([]byte, 2*1024*1024)
-			for path := range fileChan {
-				if err := processJSONLFile(path, lineChan, buf); err != nil {
-					log.Printf("Error processing file %s: %v", path, err)
+			for work := range fileChan {
+				if err := processJSONLFile(work.Path, lineChan, buf, work.FromHistory); err != nil {
+					log.Printf("Error processing file %s: %v", work.Path, err)
 				}
 			}
 		})
 	}
 
-	// Send files to workers
+	// Send Claude log files to workers
 	for _, path := range jsonlFiles {
-		fileChan <- path
+		fileChan <- FileWork{Path: path, FromHistory: false}
+	}
+
+	// Send history files to workers
+	for _, path := range historyFiles {
+		fileChan <- FileWork{Path: path, FromHistory: true}
 	}
 	close(fileChan)
 
@@ -1330,6 +1401,11 @@ func main() {
 	// Close cost channel and wait for accumulator
 	close(costChan)
 	accWg.Wait()
+
+	// Save new Claude records to history
+	if err := saveToHistory(claudeRecords, historyUUIDs, loadedHistoryFiles, claudeMinTime, claudeMaxTime); err != nil {
+		log.Printf("Warning: could not save to history: %v", err)
+	}
 
 	// Render output based on format
 	if outputKind == "summary" {
@@ -1363,7 +1439,82 @@ func main() {
 	}
 }
 
-func processJSONLFile(path string, lineChan chan<- []byte, buffer []byte) error {
+// saveToHistory saves new Claude records to history files with deduplication
+func saveToHistory(claudeRecords []CostRecord, historyUUIDs map[string]bool, loadedHistoryFiles map[string]bool, claudeMinTime, claudeMaxTime time.Time) error {
+	if len(claudeRecords) == 0 {
+		return nil
+	}
+
+	// Get all history files
+	allHistoryFiles, err := ListHistoryFiles()
+	if err != nil {
+		return fmt.Errorf("listing history files: %w", err)
+	}
+
+	// Find history files in Claude time range that weren't already loaded
+	claudeStartEpoch := claudeMinTime.Unix()
+	claudeEndEpoch := claudeMaxTime.Add(24 * time.Hour).Unix() // Add a day to include the end date
+
+	additionalFiles := FilterFilesForRange(allHistoryFiles, claudeStartEpoch, claudeEndEpoch)
+	for _, f := range additionalFiles {
+		if !loadedHistoryFiles[f] {
+			// Load UUIDs from this file
+			ids, err := LoadUUIDs(f)
+			if err != nil {
+				log.Printf("Warning: could not load UUIDs from %s: %v", f, err)
+				continue
+			}
+			for id := range ids {
+				historyUUIDs[id] = true
+			}
+		}
+	}
+
+	// Group Claude records by date, filtering out those already in history
+	recordsByDate := make(map[string][]CostRecord)
+	for _, record := range claudeRecords {
+		// Skip if already in history (by UUID)
+		if record.UUID != "" && historyUUIDs[record.UUID] {
+			continue
+		}
+		// Skip if no raw line (shouldn't happen)
+		if len(record.RawLine) == 0 {
+			continue
+		}
+
+		date := record.FullTimestamp.Format("2006-01-02")
+		recordsByDate[date] = append(recordsByDate[date], record)
+	}
+
+	// Save each date's records to the appropriate history file
+	for _, records := range recordsByDate {
+		if len(records) == 0 {
+			continue
+		}
+
+		// Use the first record's timestamp to determine the file
+		histFile, err := HistoryFileForTimestamp(records[0].FullTimestamp)
+		if err != nil {
+			log.Printf("Warning: could not get history file path: %v", err)
+			continue
+		}
+
+		// Collect raw lines
+		var lines [][]byte
+		for _, r := range records {
+			lines = append(lines, r.RawLine)
+		}
+
+		// Append to history file
+		if err := AppendRawLines(histFile, lines); err != nil {
+			log.Printf("Warning: could not append to history file %s: %v", histFile, err)
+		}
+	}
+
+	return nil
+}
+
+func processJSONLFile(path string, lineChan chan<- LineWork, buffer []byte, fromHistory bool) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -1384,7 +1535,7 @@ func processJSONLFile(path string, lineChan chan<- []byte, buffer []byte) error 
 		// Make a copy of the line since scanner reuses the buffer
 		lineCopy := make([]byte, len(line))
 		copy(lineCopy, line)
-		lineChan <- lineCopy
+		lineChan <- LineWork{Line: lineCopy, FromHistory: fromHistory}
 	}
 
 	if err := scanner.Err(); err != nil {

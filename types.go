@@ -13,8 +13,8 @@ type ConversationEntry struct {
 	// Version       string         `json:"version"`
 	// GitBranch     string         `json:"gitBranch"`
 	// Type          string         `json:"type"`
-	Message Message `json:"message"`
-	// UUID          string         `json:"uuid"`
+	Message   Message   `json:"message"`
+	UUID      string    `json:"uuid"`
 	Timestamp time.Time `json:"timestamp"`
 	RequestID *string   `json:"requestId,omitempty"`
 	// ToolUseResult *ToolUseResult `json:"toolUseResult,omitempty"`
