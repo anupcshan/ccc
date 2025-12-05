@@ -8,7 +8,7 @@ type ConversationEntry struct {
 	// ParentUUID    *string        `json:"parentUuid"`
 	// IsSidechain   bool           `json:"isSidechain"`
 	// UserType      string         `json:"userType"`
-	// CWD           string         `json:"cwd"`
+	CWD string `json:"cwd"`
 	// SessionID     string         `json:"sessionId"`
 	// Version       string         `json:"version"`
 	// GitBranch     string         `json:"gitBranch"`

@@ -39,6 +39,7 @@ type CostRecord struct {
 	FullTimestamp    time.Time // Full timestamp for history file bucketing
 	Hour             int       // Hour of day (0-23)
 	Weekday          string    // Day of week (Mon, Tue, etc.)
+	Cwd              string    // Current working directory from the log entry
 	FromHistory      bool      // True if record came from history file
 	RawLine          []byte    // Original JSON line (for saving to history)
 }
@@ -574,6 +575,19 @@ func getGroupConfig(groupBy string) GroupConfig {
 			},
 			Hierarchical: false,
 		},
+		"cwd": {
+			LabelColumns: []string{"Directory"},
+			BuildGroupKey: func(record CostRecord) string {
+				if record.Cwd == "" {
+					return "(unknown)"
+				}
+				return record.Cwd
+			},
+			ParseGroupKey: func(key string) []string {
+				return []string{key}
+			},
+			Hierarchical: false,
+		},
 	}
 
 	if cfg, ok := configs[groupBy]; ok {
@@ -593,9 +607,9 @@ func parseOutputFormat(format string) (string, string, string) {
 	if strings.HasPrefix(format, "table:") {
 		groupBy := strings.TrimPrefix(format, "table:")
 		// Validate groupBy
-		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true}
+		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true, "cwd": true}
 		if !validGroupings[groupBy] {
-			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday)", groupBy)
+			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday, cwd)", groupBy)
 		}
 		return "table", groupBy, ""
 	}
@@ -611,7 +625,7 @@ func parseOutputFormat(format string) (string, string, string) {
 	}
 
 	// Unknown format - treat as potential template name
-	log.Fatalf("Unknown output format: %s (valid: table, table:day, table:model, table:day,model, table:hour, table:weekday, totalcost, totaltokens, costsummary, or custom Go template)", format)
+	log.Fatalf("Unknown output format: %s (valid: table, table:day, table:model, table:day,model, table:hour, table:weekday, table:cwd, totalcost, totaltokens, costsummary, or custom Go template)", format)
 	return "", "", ""
 }
 
@@ -1231,9 +1245,9 @@ func main() {
 	accWg.Add(1)
 	metricsByGroup := make(map[string]Metrics)
 	var allRecords []CostRecord
-	var claudeRecords []CostRecord            // Records from Claude logs (for saving to history)
-	historyUUIDs := make(map[string]bool)     // UUIDs already in history (for dedup)
-	var claudeMinTime, claudeMaxTime time.Time      // Time range of Claude records
+	var claudeRecords []CostRecord             // Records from Claude logs (for saving to history)
+	historyUUIDs := make(map[string]bool)      // UUIDs already in history (for dedup)
+	var claudeMinTime, claudeMaxTime time.Time // Time range of Claude records
 	var claudeTimeInitialized bool
 	go func() {
 		defer accWg.Done()
@@ -1356,6 +1370,7 @@ func main() {
 					FullTimestamp:    localTime,
 					Hour:             localTime.Hour(),
 					Weekday:          localTime.Weekday().String()[:3],
+					Cwd:              entry.CWD,
 					FromHistory:      work.FromHistory,
 					RawLine:          work.Line, // Keep raw line for saving to history
 				}
