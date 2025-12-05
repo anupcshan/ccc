@@ -40,6 +40,7 @@ type CostRecord struct {
 	Hour             int       // Hour of day (0-23)
 	Weekday          string    // Day of week (Mon, Tue, etc.)
 	Cwd              string    // Current working directory from the log entry
+	GitBranch        string    // Git branch from the log entry
 	FromHistory      bool      // True if record came from history file
 	RawLine          []byte    // Original JSON line (for saving to history)
 }
@@ -588,6 +589,24 @@ func getGroupConfig(groupBy string) GroupConfig {
 			},
 			Hierarchical: false,
 		},
+		"cwd,branch": {
+			LabelColumns: []string{"Directory", "Branch"},
+			BuildGroupKey: func(record CostRecord) string {
+				cwd := record.Cwd
+				if cwd == "" {
+					cwd = "(unknown)"
+				}
+				branch := record.GitBranch
+				if branch == "" {
+					branch = "(none)"
+				}
+				return cwd + "|" + branch
+			},
+			ParseGroupKey: func(key string) []string {
+				return strings.Split(key, "|")
+			},
+			Hierarchical: true,
+		},
 	}
 
 	if cfg, ok := configs[groupBy]; ok {
@@ -607,9 +626,9 @@ func parseOutputFormat(format string) (string, string, string) {
 	if strings.HasPrefix(format, "table:") {
 		groupBy := strings.TrimPrefix(format, "table:")
 		// Validate groupBy
-		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true, "cwd": true}
+		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true, "cwd": true, "cwd,branch": true}
 		if !validGroupings[groupBy] {
-			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday, cwd)", groupBy)
+			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday, cwd, cwd,branch)", groupBy)
 		}
 		return "table", groupBy, ""
 	}
@@ -625,7 +644,7 @@ func parseOutputFormat(format string) (string, string, string) {
 	}
 
 	// Unknown format - treat as potential template name
-	log.Fatalf("Unknown output format: %s (valid: table, table:day, table:model, table:day,model, table:hour, table:weekday, table:cwd, totalcost, totaltokens, costsummary, or custom Go template)", format)
+	log.Fatalf("Unknown output format: %s (valid: table, table:day, table:model, table:day,model, table:hour, table:weekday, table:cwd, table:cwd,branch, totalcost, totaltokens, costsummary, or custom Go template)", format)
 	return "", "", ""
 }
 
@@ -1371,6 +1390,7 @@ func main() {
 					Hour:             localTime.Hour(),
 					Weekday:          localTime.Weekday().String()[:3],
 					Cwd:              entry.CWD,
+					GitBranch:        entry.GitBranch,
 					FromHistory:      work.FromHistory,
 					RawLine:          work.Line, // Keep raw line for saving to history
 				}
