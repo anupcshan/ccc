@@ -119,12 +119,13 @@ func formatTokens(tokens int) string {
 func formatTokensWithCostColored(tokens int, cost float64, tokenWidth, costWidth int, intensity float64, colorScheme string) string {
 	tokenStr := formatTokens(tokens)
 	costStr := fmt.Sprintf("$%.2f", cost)
-
-	// Get color based on intensity and scheme
-	color := getColorForIntensity(intensity, colorScheme)
-
-	// Format with color
 	formatted := fmt.Sprintf("%*s  %*s", tokenWidth, tokenStr, costWidth, costStr)
+
+	if noColor {
+		return formatted
+	}
+
+	color := getColorForIntensity(intensity, colorScheme)
 	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", color[0], color[1], color[2], formatted)
 }
 
@@ -363,8 +364,13 @@ type HeatmapData struct {
 // formatTokensColored formats tokens with ANSI color based on intensity
 func formatTokensColored(tokens int, tokenWidth int, intensity float64, colorScheme string) string {
 	tokenStr := formatTokens(tokens)
-	color := getColorForIntensity(intensity, colorScheme)
 	formatted := fmt.Sprintf("%*s", tokenWidth, tokenStr)
+
+	if noColor {
+		return formatted
+	}
+
+	color := getColorForIntensity(intensity, colorScheme)
 	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", color[0], color[1], color[2], formatted)
 }
 
@@ -1155,10 +1161,14 @@ func renderHierarchical(table *tablewriter.Table, cfg GroupConfig, keys []string
 // maxWidthOverride is set by the undocumented -maxwidth flag for testing
 var maxWidthOverride int
 
+// noColor disables ANSI color codes in output
+var noColor bool
+
 func main() {
 	output := flag.String("output", "table", "Output format: table, table:day, table:model, table:day,model, totalcost, totaltokens, costsummary, or custom Go template")
 	flag.StringVar(output, "o", "table", "Output format (shorthand)")
 	flag.IntVar(&maxWidthOverride, "maxwidth", 0, "")
+	colorMode := flag.String("color", "auto", "Color output: auto, yes, no")
 	cpuProfile := flag.String("cpuprofile", "", "Write CPU profile to file")
 	memProfile := flag.String("memprofile", "", "Write memory profile to file")
 
@@ -1198,6 +1208,16 @@ func main() {
 	}
 
 	flag.Parse()
+
+	// Set color mode
+	switch *colorMode {
+	case "yes", "true", "always":
+		noColor = false
+	case "no", "false", "never":
+		noColor = true
+	default: // "auto"
+		noColor = !term.IsTerminal(int(os.Stdout.Fd()))
+	}
 
 	// CPU profiling
 	if *cpuProfile != "" {
