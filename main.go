@@ -266,23 +266,15 @@ func calculateColumnWidths(metricsByGroup map[string]Metrics) ColumnWidths {
 			widths.TotalCostWidth = totalCostW
 		}
 
-		// Cell widths (actual width of token + 2 space gap + cost for this row)
-		if cellW := inputTokenW + 2 + inputCostW; cellW > widths.InputCellWidth {
-			widths.InputCellWidth = cellW
-		}
-		if cellW := outputTokenW + 2 + outputCostW; cellW > widths.OutputCellWidth {
-			widths.OutputCellWidth = cellW
-		}
-		if cellW := cacheReadTokenW + 2 + cacheReadCostW; cellW > widths.CacheReadCellWidth {
-			widths.CacheReadCellWidth = cellW
-		}
-		if cellW := cacheWriteTokenW + 2 + cacheWriteCostW; cellW > widths.CacheWriteCellWidth {
-			widths.CacheWriteCellWidth = cellW
-		}
-		if cellW := totalTokenW + 2 + totalCostW; cellW > widths.TotalCellWidth {
-			widths.TotalCellWidth = cellW
-		}
 	}
+
+	// Cell widths = maxTokenWidth + 2 (gap) + maxCostWidth
+	// This must be calculated after the loop since we need the final max values
+	widths.InputCellWidth = widths.InputTokenWidth + 2 + widths.InputCostWidth
+	widths.OutputCellWidth = widths.OutputTokenWidth + 2 + widths.OutputCostWidth
+	widths.CacheReadCellWidth = widths.CacheReadTokenWidth + 2 + widths.CacheReadCostWidth
+	widths.CacheWriteCellWidth = widths.CacheWriteTokenWidth + 2 + widths.CacheWriteCostWidth
+	widths.TotalCellWidth = widths.TotalTokenWidth + 2 + widths.TotalCostWidth
 
 	return widths
 }
@@ -304,12 +296,14 @@ func calculateTableWidth(labelWidth int, numLabelCols int, widths ColumnWidths, 
 			widths.TotalCellWidth
 	case DisplayMedium:
 		// Breakdown columns: tokens only; Total: cell width
+		// Use max of token width and header width for each column
+		// Headers: "Input"(5), "Output"(6), "Cache Read"(10), "Cache Write"(11), "Total"(5)
 		contentWidth = labelWidth*numLabelCols +
-			widths.InputTokenWidth +
-			widths.OutputTokenWidth +
-			widths.CacheReadTokenWidth +
-			widths.CacheWriteTokenWidth +
-			widths.TotalCellWidth
+			max(widths.InputTokenWidth, 5) +
+			max(widths.OutputTokenWidth, 6) +
+			max(widths.CacheReadTokenWidth, 10) +
+			max(widths.CacheWriteTokenWidth, 11) +
+			max(widths.TotalCellWidth, 5)
 	case DisplayNarrow:
 		// Just label + Total cell width
 		contentWidth = labelWidth*numLabelCols +
