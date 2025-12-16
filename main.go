@@ -1163,6 +1163,8 @@ func main() {
 	flag.StringVar(output, "o", "table", "Output format (shorthand)")
 	flag.IntVar(&maxWidthOverride, "maxwidth", 0, "")
 	colorMode := flag.String("color", "auto", "Color output: auto, yes, no")
+	days := flag.Int("days", 30, "Number of days to show (0 for all)")
+	flag.IntVar(days, "d", 30, "Number of days to show (shorthand)")
 	cpuProfile := flag.String("cpuprofile", "", "Write CPU profile to file")
 	memProfile := flag.String("memprofile", "", "Write memory profile to file")
 
@@ -1171,6 +1173,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		fmt.Fprintf(os.Stderr, "  -o, -output string\n")
 		fmt.Fprintf(os.Stderr, "        Output format (default \"table\")\n")
+		fmt.Fprintf(os.Stderr, "  -d, --days int\n")
+		fmt.Fprintf(os.Stderr, "        Number of days to show (default 30, 0 for all)\n")
 		fmt.Fprintf(os.Stderr, "\nOutput Formats:\n")
 		fmt.Fprintf(os.Stderr, "  table            Table grouped by day (default)\n")
 		fmt.Fprintf(os.Stderr, "  table:day        Same as above\n")
@@ -1226,6 +1230,15 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	// Calculate time range for filtering records
+	var rangeStart int64
+	if *days > 0 {
+		now := time.Now()
+		startTime := now.AddDate(0, 0, -(*days - 1))
+		startTime = time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, startTime.Location())
+		rangeStart = startTime.Unix()
+	}
+
 	// Get home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -1259,6 +1272,8 @@ func main() {
 	}
 
 	// Track which history files we've loaded (for dedup during save)
+	// Note: We load ALL history files (not filtered by --days) to ensure
+	// proper UUID deduplication when saving Claude records to history.
 	loadedHistoryFiles := make(map[string]bool)
 	for _, f := range historyFiles {
 		loadedHistoryFiles[f] = true
@@ -1310,6 +1325,13 @@ func main() {
 					if record.FullTimestamp.After(claudeMaxTime) {
 						claudeMaxTime = record.FullTimestamp
 					}
+				}
+			}
+
+			// Skip records outside the requested time range (for metrics only)
+			if *days > 0 && !record.FullTimestamp.IsZero() {
+				if record.FullTimestamp.Unix() < rangeStart {
+					continue
 				}
 			}
 
