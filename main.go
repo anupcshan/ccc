@@ -97,6 +97,32 @@ func getTerminalWidth() int {
 	return width
 }
 
+// formatEfficiency formats cost per 1K output tokens (unit shown in header)
+func formatEfficiency(cost float64, outputTokens int) string {
+	if outputTokens == 0 {
+		return "-"
+	}
+	costPer1K := (cost / float64(outputTokens)) * 1000
+	return fmt.Sprintf("$%.2f", costPer1K)
+}
+
+// formatEfficiencyColored formats efficiency with ANSI color based on intensity
+// For efficiency, LOWER is BETTER, so we invert the intensity (high cost = dim, low cost = bright)
+func formatEfficiencyColored(cost float64, outputTokens int, width int, intensity float64, colorScheme string) string {
+	effStr := formatEfficiency(cost, outputTokens)
+	formatted := fmt.Sprintf("%*s", width, effStr)
+
+	if noColor {
+		return formatted
+	}
+
+	// Invert intensity: lower cost per token = higher intensity (brighter = better)
+	invertedIntensity := 1.0 - intensity
+
+	color := getColorForIntensity(invertedIntensity, colorScheme)
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[0m", color[0], color[1], color[2], formatted)
+}
+
 // formatTokens formats a token count in a human-readable way
 func formatTokens(tokens int) string {
 	if tokens == 0 {
@@ -189,6 +215,21 @@ func getColorForIntensity(intensity float64, scheme string) [3]int {
 			b := int(180 + (75 * t))
 			return [3]int{r, g, b}
 		}
+	case "green": // Efficiency column (brighter = better)
+		// Very dim (50, 70, 50) → Medium (60, 160, 60) → Bright (80, 255, 80)
+		if intensity < 0.5 {
+			t := intensity * 2
+			r := int(50 + (10 * t))
+			g := int(70 + (90 * t))
+			b := int(50 + (10 * t))
+			return [3]int{r, g, b}
+		} else {
+			t := (intensity - 0.5) * 2
+			r := int(60 + (20 * t))
+			g := int(160 + (95 * t))
+			b := int(60 + (20 * t))
+			return [3]int{r, g, b}
+		}
 	default:
 		return [3]int{255, 255, 255} // White
 	}
@@ -206,6 +247,7 @@ type ColumnWidths struct {
 	CacheWriteCostWidth  int
 	TotalTokenWidth      int
 	TotalCostWidth       int
+	EfficiencyWidth      int // Width for efficiency column ($/1K output)
 	// Cell widths for width calculation (tokens + gap + cost)
 	InputCellWidth      int
 	OutputCellWidth     int
@@ -266,6 +308,11 @@ func calculateColumnWidths(metricsByGroup map[string]Metrics) ColumnWidths {
 			widths.TotalCostWidth = totalCostW
 		}
 
+		// Efficiency width
+		effW := len(formatEfficiency(m.Cost, m.OutputTokens))
+		if effW > widths.EfficiencyWidth {
+			widths.EfficiencyWidth = effW
+		}
 	}
 
 	// Cell widths = maxTokenWidth + 2 (gap) + maxCostWidth
@@ -284,19 +331,21 @@ func calculateColumnWidths(metricsByGroup map[string]Metrics) ColumnWidths {
 // Width = (N+1) borders + N*(2 padding) + sum(content widths)
 func calculateTableWidth(labelWidth int, numLabelCols int, widths ColumnWidths, mode DisplayMode) int {
 	var contentWidth int
+	var numCols int
 
 	switch mode {
 	case DisplayWide:
-		// All columns: use actual cell widths (max of token+gap+cost per row)
+		// All columns + efficiency
 		contentWidth = labelWidth*numLabelCols +
 			widths.InputCellWidth +
 			widths.OutputCellWidth +
 			widths.CacheReadCellWidth +
 			widths.CacheWriteCellWidth +
-			widths.TotalCellWidth
+			widths.TotalCellWidth +
+			max(widths.EfficiencyWidth, 8) // header is 8 chars
+		numCols = numLabelCols + 6 // 5 metric columns + efficiency
 	case DisplayMedium:
-		// Breakdown columns: tokens only; Total: cell width
-		// Use max of token width and header width for each column
+		// Breakdown columns: tokens only; Total: cell width; NO efficiency
 		// Headers: "Input"(5), "Output"(6), "Cache Read"(10), "Cache Write"(11), "Total"(5)
 		contentWidth = labelWidth*numLabelCols +
 			max(widths.InputTokenWidth, 5) +
@@ -304,14 +353,11 @@ func calculateTableWidth(labelWidth int, numLabelCols int, widths ColumnWidths, 
 			max(widths.CacheReadTokenWidth, 10) +
 			max(widths.CacheWriteTokenWidth, 11) +
 			max(widths.TotalCellWidth, 5)
+		numCols = numLabelCols + 5 // 5 metric columns
 	case DisplayNarrow:
 		// Just label + Total cell width
 		contentWidth = labelWidth*numLabelCols +
 			widths.TotalCellWidth
-	}
-
-	numCols := numLabelCols + 5 // 5 metric columns for wide/medium
-	if mode == DisplayNarrow {
 		numCols = numLabelCols + 1 // just Total
 	}
 
@@ -353,6 +399,8 @@ type HeatmapData struct {
 	MaxCacheWrite float64
 	MinTotal      float64
 	MaxTotal      float64
+	MinEfficiency float64 // Cost per output token (lower is better)
+	MaxEfficiency float64
 }
 
 // formatTokensColored formats tokens with ANSI color based on intensity
@@ -378,6 +426,7 @@ func buildMetricsColumnsColored(m Metrics, widths ColumnWidths, heatmap HeatmapD
 	cacheReadIntensity := calculateIntensity(m.CacheReadCost, heatmap.MinCacheRead, heatmap.MaxCacheRead)
 	cacheWriteIntensity := calculateIntensity(m.CacheWriteCost, heatmap.MinCacheWrite, heatmap.MaxCacheWrite)
 	totalIntensity := calculateIntensity(m.Cost, heatmap.MinTotal, heatmap.MaxTotal)
+	efficiencyIntensity := calculateIntensity(calculateEfficiency(m.Cost, m.OutputTokens), heatmap.MinEfficiency, heatmap.MaxEfficiency)
 
 	return []string{
 		formatTokensWithCostColored(m.InputTokens, m.InputCost, widths.InputTokenWidth, widths.InputCostWidth, inputIntensity, colorScheme),
@@ -385,10 +434,11 @@ func buildMetricsColumnsColored(m Metrics, widths ColumnWidths, heatmap HeatmapD
 		formatTokensWithCostColored(m.CacheReadTokens, m.CacheReadCost, widths.CacheReadTokenWidth, widths.CacheReadCostWidth, cacheReadIntensity, colorScheme),
 		formatTokensWithCostColored(m.CacheWriteTokens, m.CacheWriteCost, widths.CacheWriteTokenWidth, widths.CacheWriteCostWidth, cacheWriteIntensity, colorScheme),
 		formatTokensWithCostColored(totalTokens, m.Cost, widths.TotalTokenWidth, widths.TotalCostWidth, totalIntensity, colorScheme),
+		formatEfficiencyColored(m.Cost, m.OutputTokens, widths.EfficiencyWidth, efficiencyIntensity, colorScheme),
 	}
 }
 
-// buildMetricsColumnsWithMixedHeatmap uses blue heatmap for first 4 columns, orange for Total column
+// buildMetricsColumnsWithMixedHeatmap uses blue heatmap for first 4 columns, orange for Total column, green for efficiency
 func buildMetricsColumnsWithMixedHeatmap(m Metrics, widths ColumnWidths, mainHeatmap HeatmapData, totalColumnHeatmap HeatmapData) []string {
 	totalTokens := m.InputTokens + m.OutputTokens + m.CacheReadTokens + m.CacheWriteTokens
 
@@ -401,12 +451,16 @@ func buildMetricsColumnsWithMixedHeatmap(m Metrics, widths ColumnWidths, mainHea
 	// Calculate intensity using total column heatmap (orange) for Total column
 	totalIntensity := calculateIntensity(m.Cost, totalColumnHeatmap.MinTotal, totalColumnHeatmap.MaxTotal)
 
+	// Calculate efficiency intensity using main heatmap
+	efficiencyIntensity := calculateIntensity(calculateEfficiency(m.Cost, m.OutputTokens), mainHeatmap.MinEfficiency, mainHeatmap.MaxEfficiency)
+
 	return []string{
 		formatTokensWithCostColored(m.InputTokens, m.InputCost, widths.InputTokenWidth, widths.InputCostWidth, inputIntensity, "blue"),
 		formatTokensWithCostColored(m.OutputTokens, m.OutputCost, widths.OutputTokenWidth, widths.OutputCostWidth, outputIntensity, "blue"),
 		formatTokensWithCostColored(m.CacheReadTokens, m.CacheReadCost, widths.CacheReadTokenWidth, widths.CacheReadCostWidth, cacheReadIntensity, "blue"),
 		formatTokensWithCostColored(m.CacheWriteTokens, m.CacheWriteCost, widths.CacheWriteTokenWidth, widths.CacheWriteCostWidth, cacheWriteIntensity, "blue"),
 		formatTokensWithCostColored(totalTokens, m.Cost, widths.TotalTokenWidth, widths.TotalCostWidth, totalIntensity, "orange"),
+		formatEfficiencyColored(m.Cost, m.OutputTokens, widths.EfficiencyWidth, efficiencyIntensity, "green"),
 	}
 }
 
@@ -455,10 +509,27 @@ func calculateIntensity(value, min, max float64) float64 {
 	return intensity
 }
 
+// calculateEfficiency returns cost per output token (0 if no output tokens)
+func calculateEfficiency(cost float64, outputTokens int) float64 {
+	if outputTokens == 0 {
+		return 0
+	}
+	return cost / float64(outputTokens)
+}
+
 // calculateHeatmapData computes min/max values for each column across all metrics
 func calculateHeatmapData(metrics []Metrics) HeatmapData {
 	if len(metrics) == 0 {
 		return HeatmapData{}
+	}
+
+	// Find first metric with output tokens for efficiency initialization
+	var firstEfficiency float64
+	for _, m := range metrics {
+		if m.OutputTokens > 0 {
+			firstEfficiency = calculateEfficiency(m.Cost, m.OutputTokens)
+			break
+		}
 	}
 
 	heatmap := HeatmapData{
@@ -472,6 +543,8 @@ func calculateHeatmapData(metrics []Metrics) HeatmapData {
 		MaxCacheWrite: metrics[0].CacheWriteCost,
 		MinTotal:      metrics[0].Cost,
 		MaxTotal:      metrics[0].Cost,
+		MinEfficiency: firstEfficiency,
+		MaxEfficiency: firstEfficiency,
 	}
 
 	for _, m := range metrics {
@@ -509,6 +582,16 @@ func calculateHeatmapData(metrics []Metrics) HeatmapData {
 		}
 		if m.Cost > heatmap.MaxTotal {
 			heatmap.MaxTotal = m.Cost
+		}
+		// Efficiency (only for rows with output tokens)
+		if m.OutputTokens > 0 {
+			eff := calculateEfficiency(m.Cost, m.OutputTokens)
+			if eff < heatmap.MinEfficiency {
+				heatmap.MinEfficiency = eff
+			}
+			if eff > heatmap.MaxEfficiency {
+				heatmap.MaxEfficiency = eff
+			}
 		}
 	}
 
@@ -740,15 +823,14 @@ func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metri
 	var headers []string
 	switch displayMode {
 	case DisplayWide:
-		headers = append(cfg.LabelColumns, "Input", "Output", "Cache Read", "Cache Write", "Total")
+		headers = append(cfg.LabelColumns, "Input", "Output", "Cache Read", "Cache Write", "Total", "$/1K Out")
 	case DisplayMedium:
 		headers = append(cfg.LabelColumns, "Input", "Output", "Cache Read", "Cache Write", "Total")
 	case DisplayNarrow:
 		headers = append(cfg.LabelColumns, "Total")
 	}
-	table.Header(headers)
 
-	// Configure alignment (labels left, metrics right)
+	// Configure alignment and formatting BEFORE setting headers
 	alignments := make([]tw.Align, len(headers))
 	for i := range alignments {
 		if i < len(cfg.LabelColumns) {
@@ -758,9 +840,12 @@ func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metri
 		}
 	}
 	table.Configure(func(c *tablewriter.Config) {
+		c.Header.Formatting.AutoFormat = tw.Off // Don't mangle header text
 		c.Row.Alignment.PerColumn = alignments
 		c.Row.Formatting = tw.CellFormatting{MergeMode: tw.MergeHierarchical}
 	})
+
+	table.Header(headers)
 
 	// Calculate heatmaps for three zones:
 	// 1. Main data cells (blue)
