@@ -43,6 +43,8 @@ type CostRecord struct {
 	GitBranch        string    // Git branch from the log entry
 	FromHistory      bool      // True if record came from history file
 	RawLine          []byte    // Original JSON line (for saving to history)
+	Source           string    // Data source: "claude" or "opencode"
+	ProviderID       string    // Provider ID (e.g., "anthropic", "zai-coding-plan")
 }
 
 // Metrics holds aggregated metrics for a group
@@ -58,16 +60,31 @@ type Metrics struct {
 	CacheWriteCost   float64
 }
 
+// SourceType identifies the data source
+type SourceType string
+
+const (
+	SourceClaude   SourceType = "claude"
+	SourceOpenCode SourceType = "opencode"
+)
+
 // LineWork carries a line through the pipeline with source info
 type LineWork struct {
 	Line        []byte
 	FromHistory bool
+	Source      SourceType
 }
 
 // FileWork carries a file path with source info
 type FileWork struct {
 	Path        string
 	FromHistory bool
+	Source      SourceType
+}
+
+// OpenCodeWork carries an individual opencode message file
+type OpenCodeWork struct {
+	Path string
 }
 
 // GroupConfig defines how to group and display data
@@ -690,6 +707,46 @@ func getGroupConfig(groupBy string) GroupConfig {
 			},
 			Hierarchical: true,
 		},
+		"source": {
+			LabelColumns: []string{"Source"},
+			BuildGroupKey: func(record CostRecord) string {
+				if record.Source == "" {
+					return "claude"
+				}
+				return record.Source
+			},
+			ParseGroupKey: func(key string) []string {
+				return []string{key}
+			},
+			Hierarchical: false,
+		},
+		"provider": {
+			LabelColumns: []string{"Provider"},
+			BuildGroupKey: func(record CostRecord) string {
+				if record.ProviderID == "" {
+					return "anthropic"
+				}
+				return record.ProviderID
+			},
+			ParseGroupKey: func(key string) []string {
+				return []string{key}
+			},
+			Hierarchical: false,
+		},
+		"source,model": {
+			LabelColumns: []string{"Source", "Model"},
+			BuildGroupKey: func(record CostRecord) string {
+				source := record.Source
+				if source == "" {
+					source = "claude"
+				}
+				return source + "|" + record.PricingKey
+			},
+			ParseGroupKey: func(key string) []string {
+				return strings.Split(key, "|")
+			},
+			Hierarchical: true,
+		},
 	}
 
 	if cfg, ok := configs[groupBy]; ok {
@@ -709,9 +766,9 @@ func parseOutputFormat(format string) (string, string, string) {
 	if strings.HasPrefix(format, "table:") {
 		groupBy := strings.TrimPrefix(format, "table:")
 		// Validate groupBy
-		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true, "cwd": true, "cwd,branch": true}
+		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true, "cwd": true, "cwd,branch": true, "source": true, "provider": true, "source,model": true}
 		if !validGroupings[groupBy] {
-			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday, cwd, cwd,branch)", groupBy)
+			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday, cwd, cwd,branch, source, provider, source,model)", groupBy)
 		}
 		return "table", groupBy, ""
 	}
@@ -1250,6 +1307,8 @@ func main() {
 	colorMode := flag.String("color", "auto", "Color output: auto, yes, no")
 	days := flag.Int("days", 30, "Number of days to show (0 for all)")
 	flag.IntVar(days, "d", 30, "Number of days to show (shorthand)")
+	sourceFilter := flag.String("source", "", "Filter by source: claude, opencode (default: all)")
+	flag.StringVar(sourceFilter, "s", "", "Filter by source (shorthand)")
 	cpuProfile := flag.String("cpuprofile", "", "Write CPU profile to file")
 	memProfile := flag.String("memprofile", "", "Write memory profile to file")
 
@@ -1260,6 +1319,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "        Output format (default \"table\")\n")
 		fmt.Fprintf(os.Stderr, "  -d, --days int\n")
 		fmt.Fprintf(os.Stderr, "        Number of days to show (default 30, 0 for all)\n")
+		fmt.Fprintf(os.Stderr, "  -s, --source string\n")
+		fmt.Fprintf(os.Stderr, "        Filter by source: claude, opencode (default: all)\n")
 		fmt.Fprintf(os.Stderr, "\nOutput Formats:\n")
 		fmt.Fprintf(os.Stderr, "  table            Table grouped by day (default)\n")
 		fmt.Fprintf(os.Stderr, "  table:day        Same as above\n")
@@ -1267,6 +1328,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  table:day,model  Table with day/model hierarchy\n")
 		fmt.Fprintf(os.Stderr, "  table:hour       Table grouped by hour of day\n")
 		fmt.Fprintf(os.Stderr, "  table:weekday    Table grouped by day of week\n")
+		fmt.Fprintf(os.Stderr, "  table:source     Table grouped by source (claude/opencode)\n")
+		fmt.Fprintf(os.Stderr, "  table:provider   Table grouped by provider\n")
+		fmt.Fprintf(os.Stderr, "  table:source,model Table with source/model hierarchy\n")
 		fmt.Fprintf(os.Stderr, "  totalcost        Total cost only (e.g., $239.75)\n")
 		fmt.Fprintf(os.Stderr, "  totaltokens      Total tokens only (e.g., 366.5m)\n")
 		fmt.Fprintf(os.Stderr, "  costsummary      Today/week/month breakdown\n")
@@ -1285,6 +1349,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s                    # table by day\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -o table:model     # table by model\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -o table:source    # table by source\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -s opencode        # opencode data only\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -o totalcost       # just total cost\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -o costsummary     # time breakdown\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -o '{{.TotalCost}}'# custom template\n", os.Args[0])
@@ -1346,8 +1412,26 @@ func main() {
 		return nil
 	})
 
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		log.Fatalf("Error walking directory: %v", err)
+	}
+
+	// Collect all OpenCode message files
+	opencodeDir := filepath.Join(homeDir, ".local", "share", "opencode", "storage", "message")
+	var opencodeFiles []string
+	err = filepath.WalkDir(opencodeDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".json") {
+			opencodeFiles = append(opencodeFiles, path)
+		}
+
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		log.Printf("Warning: could not read opencode directory: %v", err)
 	}
 
 	// Load history files
@@ -1418,6 +1502,11 @@ func main() {
 				if record.FullTimestamp.Unix() < rangeStart {
 					continue
 				}
+			}
+
+			// Skip records that don't match source filter
+			if *sourceFilter != "" && record.Source != *sourceFilter {
+				continue
 			}
 
 			// Metrics: dedupe by requestID (keep max cost) or UUID (for no-requestId records)
@@ -1514,6 +1603,8 @@ func main() {
 					GitBranch:        entry.GitBranch,
 					FromHistory:      work.FromHistory,
 					RawLine:          work.Line, // Keep raw line for saving to history
+					Source:           string(SourceClaude),
+					ProviderID:       "anthropic",
 				}
 				costChan <- record
 			}
@@ -1539,20 +1630,50 @@ func main() {
 
 	// Send Claude log files to workers
 	for _, path := range jsonlFiles {
-		fileChan <- FileWork{Path: path, FromHistory: false}
+		fileChan <- FileWork{Path: path, FromHistory: false, Source: SourceClaude}
 	}
 
 	// Send history files to workers
 	for _, path := range historyFiles {
-		fileChan <- FileWork{Path: path, FromHistory: true}
+		fileChan <- FileWork{Path: path, FromHistory: true, Source: SourceClaude}
 	}
 	close(fileChan)
+
+	// Process OpenCode files in parallel
+	var opencodeWg sync.WaitGroup
+	opencodeChan := make(chan string, len(opencodeFiles))
+	numOpencodeWorkers := min(runtime.NumCPU(), 4)
+	for i := 0; i < numOpencodeWorkers; i++ {
+		opencodeWg.Add(1)
+		go func() {
+			defer opencodeWg.Done()
+			for path := range opencodeChan {
+				record, err := processOpenCodeFile(path)
+				if err != nil {
+					// Skip files that can't be parsed
+					continue
+				}
+				if record != nil {
+					costChan <- *record
+				}
+			}
+		}()
+	}
+
+	// Send OpenCode files to workers
+	for _, path := range opencodeFiles {
+		opencodeChan <- path
+	}
+	close(opencodeChan)
 
 	// Wait for all files to be read
 	fileWg.Wait()
 	// Close line channel and wait for all parsing to complete
 	close(lineChan)
 	lineWg.Wait()
+
+	// Wait for opencode processing
+	opencodeWg.Wait()
 
 	// Close cost channel and wait for accumulator
 	close(costChan)
@@ -1699,4 +1820,75 @@ func processJSONLFile(path string, lineChan chan<- LineWork, buffer []byte, from
 	}
 
 	return nil
+}
+
+// processOpenCodeFile reads and parses a single OpenCode message JSON file
+// Returns nil record if the message should be skipped (e.g., user messages)
+func processOpenCodeFile(path string) (*CostRecord, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var msg OpenCodeMessage
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	// Only count assistant messages (user messages don't have token costs)
+	if msg.Role != "assistant" {
+		return nil, nil
+	}
+
+	// Skip if no tokens
+	if msg.Tokens.Input == 0 && msg.Tokens.Output == 0 && msg.Tokens.Reasoning == 0 {
+		return nil, nil
+	}
+
+	// Calculate tokens - reasoning tokens are part of output for cost purposes
+	inputTokens := msg.Tokens.Input
+	outputTokens := msg.Tokens.Output + msg.Tokens.Reasoning
+	cacheReadTokens := msg.Tokens.Cache.Read
+	cacheWriteTokens := msg.Tokens.Cache.Write
+
+	// Calculate cost using dynamic pricing (OpenRouter fallback)
+	totalCost, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey, _ := CalculateCostWithDynamicPricing(
+		msg.ModelID,
+		inputTokens,
+		outputTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+	)
+
+	// Use model ID as pricing key if no pricing found
+	if pricingKey == "" {
+		pricingKey = msg.ModelID
+	}
+
+	// Convert Unix milliseconds to time.Time
+	timestamp := time.UnixMilli(msg.Time.Created)
+	localTime := timestamp.Local()
+
+	record := &CostRecord{
+		UUID:             msg.ID,
+		Cost:             totalCost,
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		CacheReadTokens:  cacheReadTokens,
+		CacheWriteTokens: cacheWriteTokens,
+		InputCost:        inputCost,
+		OutputCost:       outputCost,
+		CacheReadCost:    cacheReadCost,
+		CacheWriteCost:   cacheWriteCost,
+		PricingKey:       pricingKey,
+		Timestamp:        localTime.Format("2006-01-02"),
+		FullTimestamp:    localTime,
+		Hour:             localTime.Hour(),
+		Weekday:          localTime.Weekday().String()[:3],
+		Cwd:              msg.Path.Cwd,
+		Source:           string(SourceOpenCode),
+		ProviderID:       msg.ProviderID,
+	}
+
+	return record, nil
 }

@@ -47,3 +47,44 @@ type CacheCreationInfo struct {
 	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
 	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
 }
+
+// OpenCode data types
+
+// OpenCodeMessage represents a message from opencode storage
+type OpenCodeMessage struct {
+	ID         string          `json:"id"`
+	SessionID  string          `json:"sessionID"`
+	Role       string          `json:"role"`
+	Time       OpenCodeTime    `json:"time"`
+	ModelID    string          `json:"modelID"`
+	ProviderID string          `json:"providerID"`
+	Path       OpenCodePath    `json:"path"`
+	Cost       float64         `json:"cost"`
+	Tokens     OpenCodeTokens  `json:"tokens"`
+}
+
+// OpenCodeTime contains timestamp information (Unix milliseconds)
+type OpenCodeTime struct {
+	Created   int64 `json:"created"`
+	Completed int64 `json:"completed"`
+}
+
+// OpenCodePath contains working directory information
+type OpenCodePath struct {
+	Cwd  string `json:"cwd"`
+	Root string `json:"root"`
+}
+
+// OpenCodeTokens contains token usage information
+type OpenCodeTokens struct {
+	Input     int            `json:"input"`
+	Output    int            `json:"output"`
+	Reasoning int            `json:"reasoning"`
+	Cache     OpenCodeCache  `json:"cache"`
+}
+
+// OpenCodeCache contains cache token counts
+type OpenCodeCache struct {
+	Read  int `json:"read"`
+	Write int `json:"write"`
+}
