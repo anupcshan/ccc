@@ -1533,7 +1533,7 @@ func main() {
 	numFileWorkers := min(runtime.NumCPU(), 4)
 	for range numFileWorkers {
 		fileWg.Go(func() {
-			buf := make([]byte, 2*1024*1024)
+			buf := make([]byte, 8*1024*1024)
 			for work := range fileChan {
 				if err := processJSONLFile(work.Path, lineChan, buf, work.FromHistory); err != nil {
 					log.Printf("Error processing file %s: %v", work.Path, err)
