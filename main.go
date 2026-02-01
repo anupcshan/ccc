@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"text/template"
 	"time"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
@@ -1533,7 +1534,7 @@ func main() {
 	numFileWorkers := min(runtime.NumCPU(), 4)
 	for range numFileWorkers {
 		fileWg.Go(func() {
-			buf := make([]byte, 8*1024*1024)
+			buf := make([]byte, 2*1024*1024)
 			for work := range fileChan {
 				if err := processJSONLFile(work.Path, lineChan, buf, work.FromHistory); err != nil {
 					log.Printf("Error processing file %s: %v", work.Path, err)
@@ -1713,7 +1714,7 @@ func processJSONLFile(path string, lineChan chan<- LineWork, buffer []byte, from
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(buffer, len(buffer))
+	scanner.Buffer(buffer, 64*1024*1024)
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
