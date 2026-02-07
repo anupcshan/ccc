@@ -24,6 +24,20 @@ type ModelPricing struct {
 
 // Pricing table for Claude model families (per million tokens)
 var modelPricing = map[string]ModelPricing{
+	"opus-4.6": {
+		Input:        5.00,
+		Cache5mWrite: 6.25,
+		Cache1hWrite: 10.00,
+		CacheRead:    0.50,
+		Output:       25.00,
+	},
+	"opus-4.6-longcontext": {
+		Input:        10.00,
+		Cache5mWrite: 12.50,
+		Cache1hWrite: 20.00,
+		CacheRead:    1.00,
+		Output:       37.50,
+	},
 	"opus-4.5": {
 		Input:        5.00,
 		Cache5mWrite: 6.25,
@@ -92,7 +106,17 @@ func GetModelPricing(model string, usage *UsageInfo) (ModelPricing, string, bool
 
 	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
-		// Opus 4.5 has different pricing
+		// Opus 4.6 has same base pricing as 4.5, plus long-context pricing
+		if strings.Contains(modelLower, "4.6") || strings.Contains(modelLower, "4-6") {
+			if usage != nil {
+				totalInputTokens := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+				if totalInputTokens > 200_000 {
+					return modelPricing["opus-4.6-longcontext"], "opus-4.6-longcontext", true
+				}
+			}
+			return modelPricing["opus-4.6"], "opus-4.6", true
+		}
+		// Opus 4.5 has different pricing from older Opus models
 		if strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5") {
 			return modelPricing["opus-4.5"], "opus-4.5", true
 		}
