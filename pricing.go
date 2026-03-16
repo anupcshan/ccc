@@ -99,16 +99,23 @@ func isSonnet4(model string) bool {
 	return strings.Contains(modelLower, "sonnet-4") || strings.Contains(modelLower, "sonnet_4")
 }
 
-// GetModelPricing returns pricing for a model by detecting the family
+// claude46LongContextGADate is when 1M context became GA for Opus 4.6 and
+// Sonnet 4.6 with no long-context premium. Before this date, >200K tokens
+// incurred a surcharge for these models.
+var claude46LongContextGADate = time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC)
+
+// GetModelPricing returns pricing for a model by detecting the family.
+// timestamp is used to determine whether long-context pricing applies
+// (before 2026-03-13, Opus 4.6 and Sonnet 4.6 had a >200K surcharge).
 // Returns (pricing, pricingKey, ok)
-func GetModelPricing(model string, usage *UsageInfo) (ModelPricing, string, bool) {
+func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (ModelPricing, string, bool) {
 	modelLower := strings.ToLower(model)
 
 	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
-		// Opus 4.6 has same base pricing as 4.5, plus long-context pricing
 		if strings.Contains(modelLower, "4.6") || strings.Contains(modelLower, "4-6") {
-			if usage != nil {
+			// Before 1M context GA, >200K tokens had a long-context surcharge
+			if timestamp.Before(claude46LongContextGADate) && usage != nil {
 				totalInputTokens := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
 				if totalInputTokens > 200_000 {
 					return modelPricing["opus-4.6-longcontext"], "opus-4.6-longcontext", true
@@ -125,11 +132,15 @@ func GetModelPricing(model string, usage *UsageInfo) (ModelPricing, string, bool
 
 	// Check for Sonnet (all versions same price)
 	if strings.Contains(modelLower, "sonnet") {
-		// Check if this is Sonnet 4/4.5 with > 200K input tokens
+		// Sonnet 4/4.5/4.6 with > 200K input tokens get long-context pricing,
+		// but Sonnet 4.6 is exempt after 1M context GA date
 		if usage != nil && isSonnet4(model) {
-			totalInputTokens := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
-			if totalInputTokens > 200_000 {
-				return modelPricing["sonnet-longcontext"], "sonnet-longcontext", true
+			is46 := strings.Contains(modelLower, "4.6") || strings.Contains(modelLower, "4-6")
+			if !is46 || timestamp.Before(claude46LongContextGADate) {
+				totalInputTokens := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+				if totalInputTokens > 200_000 {
+					return modelPricing["sonnet-longcontext"], "sonnet-longcontext", true
+				}
 			}
 		}
 		return modelPricing["sonnet"], "sonnet", true
@@ -151,15 +162,16 @@ func GetModelPricing(model string, usage *UsageInfo) (ModelPricing, string, bool
 	return ModelPricing{}, "", false
 }
 
-// CalculateCost calculates the cost in dollars for a message
+// CalculateCost calculates the cost in dollars for a message.
+// timestamp is used to determine whether long-context pricing applies.
 // Returns (cost, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey).
 // pricingKey is empty if no valid pricing found.
-func CalculateCost(msg *Message) (float64, int, int, int, int, float64, float64, float64, float64, string) {
+func CalculateCost(msg *Message, timestamp time.Time) (float64, int, int, int, int, float64, float64, float64, float64, string) {
 	if msg == nil || msg.Usage == nil || msg.Model == nil {
 		return 0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, ""
 	}
 
-	pricing, pricingKey, ok := GetModelPricing(*msg.Model, msg.Usage)
+	pricing, pricingKey, ok := GetModelPricing(*msg.Model, msg.Usage, timestamp)
 	if !ok {
 		return 0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, ""
 	}
@@ -400,11 +412,12 @@ func GetOpenRouterPricing(modelID string) (ModelPricing, string, bool) {
 	return pricing, model.ID, true
 }
 
-// CalculateCostWithDynamicPricing calculates cost using hardcoded Claude pricing or OpenRouter fallback
+// CalculateCostWithDynamicPricing calculates cost using hardcoded Claude pricing or OpenRouter fallback.
+// timestamp is used to determine whether long-context pricing applies.
 // Returns same values as CalculateCost, plus whether OpenRouter pricing was used
-func CalculateCostWithDynamicPricing(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int) (float64, float64, float64, float64, float64, string, bool) {
+func CalculateCostWithDynamicPricing(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int, timestamp time.Time) (float64, float64, float64, float64, float64, string, bool) {
 	// First try hardcoded Claude pricing
-	pricing, pricingKey, ok := GetModelPricing(model, nil)
+	pricing, pricingKey, ok := GetModelPricing(model, nil, timestamp)
 	usedOpenRouter := false
 
 	if !ok {

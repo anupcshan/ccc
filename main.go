@@ -1489,7 +1489,7 @@ func main() {
 				}
 
 				// Calculate cost and get pricing key
-				cost, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey := CalculateCost(&entry.Message)
+				cost, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey := CalculateCost(&entry.Message, entry.Timestamp)
 
 				// Skip entries with no valid pricing
 				if pricingKey == "" {
@@ -1766,6 +1766,9 @@ func processOpenCodeFile(path string) (*CostRecord, error) {
 	cacheReadTokens := msg.Tokens.Cache.Read
 	cacheWriteTokens := msg.Tokens.Cache.Write
 
+	// Convert Unix milliseconds to time.Time
+	timestamp := time.UnixMilli(msg.Time.Created)
+
 	// Calculate cost using dynamic pricing (OpenRouter fallback)
 	totalCost, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey, _ := CalculateCostWithDynamicPricing(
 		msg.ModelID,
@@ -1773,15 +1776,13 @@ func processOpenCodeFile(path string) (*CostRecord, error) {
 		outputTokens,
 		cacheReadTokens,
 		cacheWriteTokens,
+		timestamp,
 	)
 
 	// Use model ID as pricing key if no pricing found
 	if pricingKey == "" {
 		pricingKey = msg.ModelID
 	}
-
-	// Convert Unix milliseconds to time.Time
-	timestamp := time.UnixMilli(msg.Time.Created)
 	localTime := timestamp.Local()
 
 	record := &CostRecord{
