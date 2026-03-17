@@ -662,6 +662,26 @@ func getGroupConfig(groupBy string) GroupConfig {
 			},
 			Hierarchical: true,
 		},
+		"month": {
+			LabelColumns: []string{"Month"},
+			BuildGroupKey: func(record CostRecord) string {
+				return record.Timestamp[:7] // "2006-01"
+			},
+			ParseGroupKey: func(key string) []string {
+				return []string{key}
+			},
+			Hierarchical: false,
+		},
+		"month,model": {
+			LabelColumns: []string{"Month", "Model"},
+			BuildGroupKey: func(record CostRecord) string {
+				return record.Timestamp[:7] + "|" + record.PricingKey
+			},
+			ParseGroupKey: func(key string) []string {
+				return strings.Split(key, "|")
+			},
+			Hierarchical: true,
+		},
 	}
 
 	if cfg, ok := configs[groupBy]; ok {
@@ -681,9 +701,9 @@ func parseOutputFormat(format string) (string, string, string) {
 	if strings.HasPrefix(format, "table:") {
 		groupBy := strings.TrimPrefix(format, "table:")
 		// Validate groupBy
-		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true, "cwd": true, "cwd,branch": true, "source": true, "provider": true, "source,model": true}
+		validGroupings := map[string]bool{"day": true, "model": true, "day,model": true, "hour": true, "weekday": true, "month": true, "month,model": true, "cwd": true, "cwd,branch": true, "source": true, "provider": true, "source,model": true}
 		if !validGroupings[groupBy] {
-			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday, cwd, cwd,branch, source, provider, source,model)", groupBy)
+			log.Fatalf("Invalid table grouping: %s (valid: day, model, day,model, hour, weekday, month, month,model, cwd, cwd,branch, source, provider, source,model)", groupBy)
 		}
 		return "table", groupBy, ""
 	}
@@ -1243,6 +1263,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  table:day,model  Table with day/model hierarchy\n")
 		fmt.Fprintf(os.Stderr, "  table:hour       Table grouped by hour of day\n")
 		fmt.Fprintf(os.Stderr, "  table:weekday    Table grouped by day of week\n")
+		fmt.Fprintf(os.Stderr, "  table:month      Table grouped by month\n")
+		fmt.Fprintf(os.Stderr, "  table:month,model Table with month/model hierarchy\n")
 		fmt.Fprintf(os.Stderr, "  table:source     Table grouped by source (claude/opencode)\n")
 		fmt.Fprintf(os.Stderr, "  table:provider   Table grouped by provider\n")
 		fmt.Fprintf(os.Stderr, "  table:source,model Table with source/model hierarchy\n")
