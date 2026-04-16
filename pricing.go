@@ -24,6 +24,13 @@ type ModelPricing struct {
 
 // Pricing table for Claude model families (per million tokens)
 var modelPricing = map[string]ModelPricing{
+	"opus-4.7": {
+		Input:        5.00,
+		Cache5mWrite: 6.25,
+		Cache1hWrite: 10.00,
+		CacheRead:    0.50,
+		Output:       25.00,
+	},
 	"opus-4.6": {
 		Input:        5.00,
 		Cache5mWrite: 6.25,
@@ -113,6 +120,9 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 
 	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
+		if strings.Contains(modelLower, "4.7") || strings.Contains(modelLower, "4-7") {
+			return modelPricing["opus-4.7"], "opus-4.7", true
+		}
 		if strings.Contains(modelLower, "4.6") || strings.Contains(modelLower, "4-6") {
 			// Before 1M context GA, >200K tokens had a long-context surcharge
 			if timestamp.Before(claude46LongContextGADate) && usage != nil {
