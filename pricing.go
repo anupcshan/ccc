@@ -94,6 +94,21 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.03,
 		Output:       1.25,
 	},
+	// DeepSeek pricing: https://api-docs.deepseek.com/quick_start/pricing/
+	"deepseek-v4-pro": {
+		Input:        0.435,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.003625,
+		Output:       0.87,
+	},
+	"deepseek-v4-flash": {
+		Input:        0.14,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0028,
+		Output:       0.28,
+	},
 }
 
 // isSonnet4 checks if the model is Sonnet 4 or 4.5
@@ -169,6 +184,17 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 		return modelPricing["haiku-3"], "haiku-3", true
 	}
 
+	// Check for DeepSeek models
+	if strings.Contains(modelLower, "deepseek") {
+		if strings.Contains(modelLower, "v4-pro") {
+			return modelPricing["deepseek-v4-pro"], "deepseek-v4-pro", true
+		}
+		if strings.Contains(modelLower, "v4-flash") {
+			return modelPricing["deepseek-v4-flash"], "deepseek-v4-flash", true
+		}
+		return ModelPricing{}, model, true
+	}
+
 	return ModelPricing{}, "", false
 }
 
@@ -183,7 +209,12 @@ func CalculateCost(msg *Message, timestamp time.Time) (float64, int, int, int, i
 
 	pricing, pricingKey, ok := GetModelPricing(*msg.Model, msg.Usage, timestamp)
 	if !ok {
-		return 0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, ""
+		usage := msg.Usage
+		cacheWriteTokens := 0
+		if usage.CacheCreation != nil {
+			cacheWriteTokens = usage.CacheCreation.Ephemeral5mInputTokens + usage.CacheCreation.Ephemeral1hInputTokens
+		}
+		return 0.0, usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, cacheWriteTokens, 0.0, 0.0, 0.0, 0.0, *msg.Model
 	}
 
 	usage := msg.Usage
@@ -215,16 +246,16 @@ func CalculateCost(msg *Message, timestamp time.Time) (float64, int, int, int, i
 
 // OpenRouterModel represents a model from the OpenRouter API
 type OpenRouterModel struct {
-	ID      string              `json:"id"`
-	Pricing OpenRouterPricing   `json:"pricing"`
+	ID      string            `json:"id"`
+	Pricing OpenRouterPricing `json:"pricing"`
 }
 
 // OpenRouterPricing contains per-token pricing from OpenRouter (as strings, converted to float)
 type OpenRouterPricing struct {
-	Prompt          string `json:"prompt"`           // Cost per input token
-	Completion      string `json:"completion"`       // Cost per output token
-	InputCacheRead  string `json:"input_cache_read"` // Cost per cache read token
-	InputCacheWrite string `json:"input_cache_write"`// Cost per cache write token
+	Prompt          string `json:"prompt"`            // Cost per input token
+	Completion      string `json:"completion"`        // Cost per output token
+	InputCacheRead  string `json:"input_cache_read"`  // Cost per cache read token
+	InputCacheWrite string `json:"input_cache_write"` // Cost per cache write token
 }
 
 // OpenRouterResponse is the API response structure

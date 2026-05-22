@@ -52,15 +52,15 @@ type CacheCreationInfo struct {
 
 // OpenCodeMessage represents a message from opencode storage
 type OpenCodeMessage struct {
-	ID         string          `json:"id"`
-	SessionID  string          `json:"sessionID"`
-	Role       string          `json:"role"`
-	Time       OpenCodeTime    `json:"time"`
-	ModelID    string          `json:"modelID"`
-	ProviderID string          `json:"providerID"`
-	Path       OpenCodePath    `json:"path"`
-	Cost       float64         `json:"cost"`
-	Tokens     OpenCodeTokens  `json:"tokens"`
+	ID         string         `json:"id"`
+	SessionID  string         `json:"sessionID"`
+	Role       string         `json:"role"`
+	Time       OpenCodeTime   `json:"time"`
+	ModelID    string         `json:"modelID"`
+	ProviderID string         `json:"providerID"`
+	Path       OpenCodePath   `json:"path"`
+	Cost       float64        `json:"cost"`
+	Tokens     OpenCodeTokens `json:"tokens"`
 }
 
 // OpenCodeTime contains timestamp information (Unix milliseconds)
@@ -77,10 +77,10 @@ type OpenCodePath struct {
 
 // OpenCodeTokens contains token usage information
 type OpenCodeTokens struct {
-	Input     int            `json:"input"`
-	Output    int            `json:"output"`
-	Reasoning int            `json:"reasoning"`
-	Cache     OpenCodeCache  `json:"cache"`
+	Input     int           `json:"input"`
+	Output    int           `json:"output"`
+	Reasoning int           `json:"reasoning"`
+	Cache     OpenCodeCache `json:"cache"`
 }
 
 // OpenCodeCache contains cache token counts
