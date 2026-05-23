@@ -10,7 +10,7 @@ type ConversationEntry struct {
 	// UserType      string         `json:"userType"`
 	CWD       string `json:"cwd"`
 	GitBranch string `json:"gitBranch"`
-	// SessionID     string         `json:"sessionId"`
+	SessionID string `json:"sessionId"`
 	// Version       string         `json:"version"`
 	// Type          string         `json:"type"`
 	Message   Message   `json:"message"`

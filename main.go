@@ -42,6 +42,7 @@ type CostRecord struct {
 	Weekday          string    // Day of week (Mon, Tue, etc.)
 	Cwd              string    // Current working directory from the log entry
 	GitBranch        string    // Git branch from the log entry
+	SessionID        string    // Session identifier for usage dedup
 	FromHistory      bool      // True if record came from history file
 	RawLine          []byte    // Original JSON line (for saving to history)
 	Source           string    // Data source: "claude" or "opencode"
@@ -1407,8 +1408,8 @@ func main() {
 		defer accWg.Done()
 		// Track the maximum cost record for each requestID
 		maxCostByRequestID := make(map[string]CostRecord)
-		// Track UUIDs we've seen (for records without requestID)
-		seenUUIDs := make(map[string]bool)
+		// Track seen usage keys (for records without requestID)
+		seenUsage := make(map[string]bool)
 
 		for record := range costChan {
 			// Track UUIDs from history files (for save dedup)
@@ -1454,13 +1455,18 @@ func main() {
 					maxCostByRequestID[*record.RequestID] = record
 				}
 			} else {
-				// No requestId - dedupe by UUID for metrics
-				if record.UUID != "" && seenUUIDs[record.UUID] {
+				// No requestId - dedupe by usage triplet (scoped to session).
+				// Some models split one API call into multiple JSONL entries (e.g.
+				// DeepSeek: thinking, text, tool_use each get a separate entry, all
+				// carrying the same usage stats). UUID dedup fails because each entry
+				// has a different UUID. The (cache_read, input, output) triplet is
+				// identical within a single API call's entries.
+				usageKey := fmt.Sprintf("%s:%d:%d:%d", record.SessionID, record.CacheReadTokens, record.InputTokens, record.OutputTokens)
+				if seenUsage[usageKey] {
 					continue
 				}
-				if record.UUID != "" {
-					seenUUIDs[record.UUID] = true
-				}
+				seenUsage[usageKey] = true
+
 				groupKey := cfg.BuildGroupKey(record)
 				m := metricsByGroup[groupKey]
 				m.Cost += record.Cost
@@ -1522,6 +1528,7 @@ func main() {
 				record := CostRecord{
 					UUID:             entry.UUID,
 					RequestID:        entry.RequestID,
+					SessionID:        entry.SessionID,
 					Cost:             cost,
 					InputTokens:      inputTokens,
 					OutputTokens:     outputTokens,
@@ -1809,6 +1816,7 @@ func processOpenCodeFile(path string) (*CostRecord, error) {
 
 	record := &CostRecord{
 		UUID:             msg.ID,
+		SessionID:        msg.SessionID,
 		Cost:             totalCost,
 		InputTokens:      inputTokens,
 		OutputTokens:     outputTokens,
