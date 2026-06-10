@@ -24,12 +24,26 @@ type ModelPricing struct {
 
 // Pricing table for Claude model families (per million tokens)
 var modelPricing = map[string]ModelPricing{
+	"opus-4.8": {
+		Input:        5.00,
+		Cache5mWrite: 6.25,
+		Cache1hWrite: 10.00,
+		CacheRead:    0.50,
+		Output:       25.00,
+	},
 	"opus-4.7": {
 		Input:        5.00,
 		Cache5mWrite: 6.25,
 		Cache1hWrite: 10.00,
 		CacheRead:    0.50,
 		Output:       25.00,
+	},
+	"fable-5": {
+		Input:        10.00,
+		Cache5mWrite: 12.50,
+		Cache1hWrite: 20.00,
+		CacheRead:    1.00,
+		Output:       50.00,
 	},
 	"opus-4.6": {
 		Input:        5.00,
@@ -133,8 +147,16 @@ var claude46LongContextGADate = time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC)
 func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (ModelPricing, string, bool) {
 	modelLower := strings.ToLower(model)
 
+	// Check for Fable
+	if strings.Contains(modelLower, "fable") {
+		return modelPricing["fable-5"], "fable-5", true
+	}
+
 	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
+		if strings.Contains(modelLower, "4.8") || strings.Contains(modelLower, "4-8") {
+			return modelPricing["opus-4.8"], "opus-4.8", true
+		}
 		if strings.Contains(modelLower, "4.7") || strings.Contains(modelLower, "4-7") {
 			return modelPricing["opus-4.7"], "opus-4.7", true
 		}
