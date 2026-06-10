@@ -31,6 +31,13 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.50,
 		Output:       25.00,
 	},
+	"opus-4.8-fast": {
+		Input:        10.00,
+		Cache5mWrite: 12.50,
+		Cache1hWrite: 20.00,
+		CacheRead:    1.00,
+		Output:       50.00,
+	},
 	"opus-4.7": {
 		Input:        5.00,
 		Cache5mWrite: 6.25,
@@ -155,6 +162,9 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
 		if strings.Contains(modelLower, "4.8") || strings.Contains(modelLower, "4-8") {
+			if usage != nil && usage.Speed == "fast" {
+				return modelPricing["opus-4.8-fast"], "opus-4.8-fast", true
+			}
 			return modelPricing["opus-4.8"], "opus-4.8", true
 		}
 		if strings.Contains(modelLower, "4.7") || strings.Contains(modelLower, "4-7") {

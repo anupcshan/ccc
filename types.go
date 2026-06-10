@@ -40,6 +40,7 @@ type UsageInfo struct {
 	OutputTokens             int                `json:"output_tokens"`
 	CacheCreation            *CacheCreationInfo `json:"cache_creation,omitempty"`
 	ServiceTier              string             `json:"service_tier"`
+	Speed                    string             `json:"speed,omitempty"`
 }
 
 // CacheCreationInfo contains ephemeral cache information
