@@ -130,6 +130,14 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.0028,
 		Output:       0.28,
 	},
+	// MiMo pricing: https://platform.xiaomimimo.com/docs/en-US/price/pay-as-you-go
+	"mimo-v2.5-pro": {
+		Input:        0.435,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0036,
+		Output:       0.87,
+	},
 }
 
 // isSonnet4 checks if the model is Sonnet 4 or 4.5
@@ -214,6 +222,11 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 		}
 		// Default to Haiku 3 for older versions or unspecified
 		return modelPricing["haiku-3"], "haiku-3", true
+	}
+
+	// Check for MiMo models
+	if strings.Contains(modelLower, "mimo-v2.5-pro") {
+		return modelPricing["mimo-v2.5-pro"], "mimo-v2.5-pro", true
 	}
 
 	// Check for DeepSeek models
