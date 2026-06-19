@@ -138,6 +138,14 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.0036,
 		Output:       0.87,
 	},
+	// GLM pricing: https://docs.z.ai/guides/overview/pricing
+	"glm-5.2": {
+		Input:        1.4,
+		Cache5mWrite: 0.0, // Cached Input Storage: limited-time free
+		Cache1hWrite: 0.0,
+		CacheRead:    0.26,
+		Output:       4.4,
+	},
 }
 
 // isSonnet4 checks if the model is Sonnet 4 or 4.5
@@ -227,6 +235,11 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 	// Check for MiMo models
 	if strings.Contains(modelLower, "mimo-v2.5-pro") {
 		return modelPricing["mimo-v2.5-pro"], "mimo-v2.5-pro", true
+	}
+
+	// Check for GLM (z.ai) models
+	if strings.Contains(modelLower, "glm-5.2") {
+		return modelPricing["glm-5.2"], "glm-5.2", true
 	}
 
 	// Check for DeepSeek models
