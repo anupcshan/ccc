@@ -94,6 +94,23 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.60,  // Proportionally scaled
 		Output:       22.50,
 	},
+	// Sonnet 5 introductory pricing ($2/$10) runs through 2026-08-31.
+	// Standard pricing ($3/$15) takes effect from 2026-09-01.
+	// GetModelPricing selects between them by timestamp.
+	"sonnet-5-intro": {
+		Input:        2.00,
+		Cache5mWrite: 2.50,
+		Cache1hWrite: 4.00,
+		CacheRead:    0.20,
+		Output:       10.00,
+	},
+	"sonnet-5": {
+		Input:        3.00,
+		Cache5mWrite: 3.75,
+		Cache1hWrite: 6.00,
+		CacheRead:    0.30,
+		Output:       15.00,
+	},
 	"haiku-4.5": {
 		Input:        1.00,
 		Cache5mWrite: 1.25,
@@ -131,12 +148,27 @@ var modelPricing = map[string]ModelPricing{
 		Output:       0.28,
 	},
 	// MiMo pricing: https://platform.xiaomimimo.com/docs/en-US/price/pay-as-you-go
+	// UltraSpeed: https://mimo.mi.com/models/en-US/mimo-v2.5-pro-ultraspeed
+	"mimo-v2.5-pro-ultraspeed": {
+		Input:        1.305,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0108,
+		Output:       2.61,
+	},
 	"mimo-v2.5-pro": {
 		Input:        0.435,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
 		CacheRead:    0.0036,
 		Output:       0.87,
+	},
+	"mimo-v2.5": {
+		Input:        0.14,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0028,
+		Output:       0.28,
 	},
 	// GLM pricing: https://docs.z.ai/guides/overview/pricing
 	"glm-5.2": {
@@ -145,6 +177,13 @@ var modelPricing = map[string]ModelPricing{
 		Cache1hWrite: 0.0,
 		CacheRead:    0.26,
 		Output:       4.4,
+	},
+	"glm-4.7": {
+		Input:        0.6,
+		Cache5mWrite: 0.0, // Cached Input Storage: limited-time free
+		Cache1hWrite: 0.0,
+		CacheRead:    0.11,
+		Output:       2.2,
 	},
 }
 
@@ -162,6 +201,10 @@ func isSonnet4(model string) bool {
 // Sonnet 4.6 with no long-context premium. Before this date, >200K tokens
 // incurred a surcharge for these models.
 var claude46LongContextGADate = time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC)
+
+// claudeSonnet5StandardDate is when Sonnet 5 introductory pricing ($2/$10)
+// ends and standard pricing ($3/$15) begins.
+var claudeSonnet5StandardDate = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 
 // GetModelPricing returns pricing for a model by detecting the family.
 // timestamp is used to determine whether long-context pricing applies
@@ -205,6 +248,15 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 
 	// Check for Sonnet (all versions same price)
 	if strings.Contains(modelLower, "sonnet") {
+		// Sonnet 5 has time-dependent pricing. It is $2/$10 introductory
+		// through 2026-08-31, then $3/$15 standard. Full 1M context at
+		// standard pricing, so no long-context surcharge applies.
+		if strings.Contains(modelLower, "sonnet-5") || strings.Contains(modelLower, "sonnet_5") {
+			if timestamp.Before(claudeSonnet5StandardDate) {
+				return modelPricing["sonnet-5-intro"], "sonnet-5-intro", true
+			}
+			return modelPricing["sonnet-5"], "sonnet-5", true
+		}
 		// Sonnet 4/4.5/4.6 with > 200K input tokens get long-context pricing,
 		// but Sonnet 4.6 is exempt after 1M context GA date
 		if usage != nil && isSonnet4(model) {
@@ -232,14 +284,24 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 		return modelPricing["haiku-3"], "haiku-3", true
 	}
 
-	// Check for MiMo models
+	// Check for MiMo models. UltraSpeed and Pro both contain "mimo-v2.5-pro",
+	// so UltraSpeed must be matched first.
+	if strings.Contains(modelLower, "mimo-v2.5-pro-ultraspeed") {
+		return modelPricing["mimo-v2.5-pro-ultraspeed"], "mimo-v2.5-pro-ultraspeed", true
+	}
 	if strings.Contains(modelLower, "mimo-v2.5-pro") {
 		return modelPricing["mimo-v2.5-pro"], "mimo-v2.5-pro", true
+	}
+	if strings.Contains(modelLower, "mimo-v2.5") {
+		return modelPricing["mimo-v2.5"], "mimo-v2.5", true
 	}
 
 	// Check for GLM (z.ai) models
 	if strings.Contains(modelLower, "glm-5.2") {
 		return modelPricing["glm-5.2"], "glm-5.2", true
+	}
+	if strings.Contains(modelLower, "glm-4.7") {
+		return modelPricing["glm-4.7"], "glm-4.7", true
 	}
 
 	// Check for DeepSeek models
