@@ -24,6 +24,21 @@ type ModelPricing struct {
 
 // Pricing table for Claude model families (per million tokens)
 var modelPricing = map[string]ModelPricing{
+	// Opus 5 is priced identically to Opus 4.8 ($5/$25). Fast mode is $10/$50.
+	"opus-5": {
+		Input:        5.00,
+		Cache5mWrite: 6.25,
+		Cache1hWrite: 10.00,
+		CacheRead:    0.50,
+		Output:       25.00,
+	},
+	"opus-5-fast": {
+		Input:        10.00,
+		Cache5mWrite: 12.50,
+		Cache1hWrite: 20.00,
+		CacheRead:    1.00,
+		Output:       50.00,
+	},
 	"opus-4.8": {
 		Input:        5.00,
 		Cache5mWrite: 6.25,
@@ -220,6 +235,12 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 
 	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
+		if strings.Contains(modelLower, "opus-5") || strings.Contains(modelLower, "opus_5") {
+			if usage != nil && usage.Speed == "fast" {
+				return modelPricing["opus-5-fast"], "opus-5-fast", true
+			}
+			return modelPricing["opus-5"], "opus-5", true
+		}
 		if strings.Contains(modelLower, "4.8") || strings.Contains(modelLower, "4-8") {
 			if usage != nil && usage.Speed == "fast" {
 				return modelPricing["opus-4.8-fast"], "opus-4.8-fast", true
