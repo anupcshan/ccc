@@ -186,6 +186,13 @@ var modelPricing = map[string]ModelPricing{
 		Output:       0.28,
 	},
 	// GLM pricing: https://docs.z.ai/guides/overview/pricing
+	"glm-5.3": {
+		Input:        1.4,
+		Cache5mWrite: 0.0, // Cached Input Storage: limited-time free
+		Cache1hWrite: 0.0,
+		CacheRead:    0.26,
+		Output:       4.4,
+	},
 	"glm-5.2": {
 		Input:        1.4,
 		Cache5mWrite: 0.0, // Cached Input Storage: limited-time free
@@ -318,6 +325,9 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 	}
 
 	// Check for GLM (z.ai) models
+	if strings.Contains(modelLower, "glm-5.3") {
+		return modelPricing["glm-5.3"], "glm-5.3", true
+	}
 	if strings.Contains(modelLower, "glm-5.2") {
 		return modelPricing["glm-5.2"], "glm-5.2", true
 	}
