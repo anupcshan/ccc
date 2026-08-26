@@ -147,7 +147,39 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.03,
 		Output:       1.25,
 	},
-	// DeepSeek pricing: https://api-docs.deepseek.com/quick_start/pricing/
+	// DeepSeek V4 peak/off-peak rates took effect 2026-08-16 16:00 UTC.
+	// Peak windows are weekdays 01:00-04:00 and 06:00-10:00 UTC.
+	// Announced: https://api-docs.deepseek.com/news/news260813
+	// Rates: https://api-docs.deepseek.com/quick_start/pricing/
+	"deepseek-v4-pro-peak": {
+		Input:        1.32,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.044,
+		Output:       3.96,
+	},
+	"deepseek-v4-pro-offpeak": {
+		Input:        0.66,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.022,
+		Output:       1.98,
+	},
+	"deepseek-v4-flash-peak": {
+		Input:        0.44,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.014,
+		Output:       1.32,
+	},
+	"deepseek-v4-flash-offpeak": {
+		Input:        0.22,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.007,
+		Output:       0.66,
+	},
+	// Flat rates before the 2026-08-16 cutoff
 	"deepseek-v4-pro": {
 		Input:        0.435,
 		Cache5mWrite: 0.0,
@@ -227,6 +259,21 @@ var claude46LongContextGADate = time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC)
 // claudeSonnet5StandardDate is when Sonnet 5 introductory pricing ($2/$10)
 // ends and standard pricing ($3/$15) begins.
 var claudeSonnet5StandardDate = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+
+// deepSeekPeakPricingDate is when DeepSeek's V4 peak/off-peak pricing took
+// effect. Requests before this used the flat rates.
+var deepSeekPeakPricingDate = time.Date(2026, 8, 16, 16, 0, 0, 0, time.UTC)
+
+// isDeepSeekPeakHour reports whether t falls in a DeepSeek peak pricing
+// window. Peak windows are weekdays 01:00-04:00 and 06:00-10:00 UTC.
+func isDeepSeekPeakHour(t time.Time) bool {
+	t = t.UTC()
+	if t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
+		return false
+	}
+	h := t.Hour()
+	return (h >= 1 && h < 4) || (h >= 6 && h < 10)
+}
 
 // GetModelPricing returns pricing for a model by detecting the family.
 // timestamp is used to determine whether long-context pricing applies
@@ -335,13 +382,26 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 		return modelPricing["glm-4.7"], "glm-4.7", true
 	}
 
-	// Check for DeepSeek models
+	// Check for DeepSeek models. V4 pricing is time-dependent: flat rates
+	// before 2026-08-16 16:00 UTC, then peak or off-peak by request time.
 	if strings.Contains(modelLower, "deepseek") {
 		if strings.Contains(modelLower, "v4-pro") {
-			return modelPricing["deepseek-v4-pro"], "deepseek-v4-pro", true
+			if timestamp.Before(deepSeekPeakPricingDate) {
+				return modelPricing["deepseek-v4-pro"], "deepseek-v4-pro", true
+			}
+			if isDeepSeekPeakHour(timestamp) {
+				return modelPricing["deepseek-v4-pro-peak"], "deepseek-v4-pro-peak", true
+			}
+			return modelPricing["deepseek-v4-pro-offpeak"], "deepseek-v4-pro-offpeak", true
 		}
 		if strings.Contains(modelLower, "v4-flash") {
-			return modelPricing["deepseek-v4-flash"], "deepseek-v4-flash", true
+			if timestamp.Before(deepSeekPeakPricingDate) {
+				return modelPricing["deepseek-v4-flash"], "deepseek-v4-flash", true
+			}
+			if isDeepSeekPeakHour(timestamp) {
+				return modelPricing["deepseek-v4-flash-peak"], "deepseek-v4-flash-peak", true
+			}
+			return modelPricing["deepseek-v4-flash-offpeak"], "deepseek-v4-flash-offpeak", true
 		}
 		return ModelPricing{}, model, true
 	}
