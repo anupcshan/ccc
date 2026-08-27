@@ -217,6 +217,23 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.0028,
 		Output:       0.28,
 	},
+	// GLM-5.3-Flash: https://docs.z.ai/guides/overview/pricing
+	// A half-price promotion runs until 24:00 on 2026-09-09 Singapore time
+	// (16:00 UTC). GetModelPricing selects between them by timestamp.
+	"glm-5.3-flash": {
+		Input:        0.15,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.03,
+		Output:       0.50,
+	},
+	"glm-5.3-flash-promo": {
+		Input:        0.075,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.015,
+		Output:       0.25,
+	},
 	// GLM pricing: https://docs.z.ai/guides/overview/pricing
 	"glm-5.3": {
 		Input:        1.4,
@@ -263,6 +280,10 @@ var claudeSonnet5StandardDate = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 // deepSeekPeakPricingDate is when DeepSeek's V4 peak/off-peak pricing took
 // effect. Requests before this used the flat rates.
 var deepSeekPeakPricingDate = time.Date(2026, 8, 16, 16, 0, 0, 0, time.UTC)
+
+// glmFlashPromoEndDate is when the GLM-5.3-Flash half-price promotion ends:
+// 24:00 on 2026-09-09 Singapore time, which is 2026-09-09 16:00 UTC.
+var glmFlashPromoEndDate = time.Date(2026, 9, 9, 16, 0, 0, 0, time.UTC)
 
 // isDeepSeekPeakHour reports whether t falls in a DeepSeek peak pricing
 // window. Peak windows are weekdays 01:00-04:00 and 06:00-10:00 UTC.
@@ -371,7 +392,14 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 		return modelPricing["mimo-v2.5"], "mimo-v2.5", true
 	}
 
-	// Check for GLM (z.ai) models
+	// Check for GLM (z.ai) models. Flash must be matched before glm-5.3,
+	// which is a substring of every flash model name.
+	if strings.Contains(modelLower, "glm-5.3-flash") {
+		if timestamp.Before(glmFlashPromoEndDate) {
+			return modelPricing["glm-5.3-flash-promo"], "glm-5.3-flash-promo", true
+		}
+		return modelPricing["glm-5.3-flash"], "glm-5.3-flash", true
+	}
 	if strings.Contains(modelLower, "glm-5.3") {
 		return modelPricing["glm-5.3"], "glm-5.3", true
 	}
