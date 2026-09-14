@@ -179,6 +179,24 @@ var modelPricing = map[string]ModelPricing{
 		CacheRead:    0.007,
 		Output:       0.66,
 	},
+	// DeepSeek V4.1-Flash pricing took effect 2026-09-10 04:00 UTC. The flash
+	// model is billed at these rates whichever of its names a request uses.
+	// Announced: https://api-docs.deepseek.com/news/news260910
+	// Rates: https://api-docs.deepseek.com/quick_start/pricing/
+	"deepseek-v4.1-flash-peak": {
+		Input:        0.30,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.006,
+		Output:       1.20,
+	},
+	"deepseek-v4.1-flash-offpeak": {
+		Input:        0.15,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.003,
+		Output:       0.60,
+	},
 	// Flat rates before the 2026-08-16 cutoff
 	"deepseek-v4-pro": {
 		Input:        0.435,
@@ -280,6 +298,10 @@ var claudeSonnet5StandardDate = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 // deepSeekPeakPricingDate is when DeepSeek's V4 peak/off-peak pricing took
 // effect. Requests before this used the flat rates.
 var deepSeekPeakPricingDate = time.Date(2026, 8, 16, 16, 0, 0, 0, time.UTC)
+
+// deepSeekV41FlashPricingDate is when DeepSeek's V4.1-Flash pricing took
+// effect. Requests to the flash model before this used the V4-Flash rates.
+var deepSeekV41FlashPricingDate = time.Date(2026, 9, 10, 4, 0, 0, 0, time.UTC)
 
 // glmFlashPromoEndDate is when the GLM-5.3-Flash half-price promotion ends:
 // 24:00 on 2026-09-09 Singapore time, which is 2026-09-09 16:00 UTC.
@@ -411,7 +433,8 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 	}
 
 	// Check for DeepSeek models. V4 pricing is time-dependent: flat rates
-	// before 2026-08-16 16:00 UTC, then peak or off-peak by request time.
+	// before 2026-08-16 16:00 UTC, then peak or off-peak by request time. The
+	// flash model moved to V4.1-Flash rates on 2026-09-10 04:00 UTC.
 	if strings.Contains(modelLower, "deepseek") {
 		if strings.Contains(modelLower, "v4-pro") {
 			if timestamp.Before(deepSeekPeakPricingDate) {
@@ -422,14 +445,22 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 			}
 			return modelPricing["deepseek-v4-pro-offpeak"], "deepseek-v4-pro-offpeak", true
 		}
-		if strings.Contains(modelLower, "v4-flash") {
+		// The flash model answers to deepseek-v4-flash (retired),
+		// deepseek-v4-flash-vision-exp (retired) and deepseek-flash.
+		if strings.Contains(modelLower, "v4-flash") || strings.Contains(modelLower, "deepseek-flash") {
 			if timestamp.Before(deepSeekPeakPricingDate) {
 				return modelPricing["deepseek-v4-flash"], "deepseek-v4-flash", true
 			}
-			if isDeepSeekPeakHour(timestamp) {
-				return modelPricing["deepseek-v4-flash-peak"], "deepseek-v4-flash-peak", true
+			if timestamp.Before(deepSeekV41FlashPricingDate) {
+				if isDeepSeekPeakHour(timestamp) {
+					return modelPricing["deepseek-v4-flash-peak"], "deepseek-v4-flash-peak", true
+				}
+				return modelPricing["deepseek-v4-flash-offpeak"], "deepseek-v4-flash-offpeak", true
 			}
-			return modelPricing["deepseek-v4-flash-offpeak"], "deepseek-v4-flash-offpeak", true
+			if isDeepSeekPeakHour(timestamp) {
+				return modelPricing["deepseek-v4.1-flash-peak"], "deepseek-v4.1-flash-peak", true
+			}
+			return modelPricing["deepseek-v4.1-flash-offpeak"], "deepseek-v4.1-flash-offpeak", true
 		}
 		return ModelPricing{}, model, true
 	}
