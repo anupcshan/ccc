@@ -14,6 +14,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/anupcshan/ccc/internal/pricing"
 	"github.com/go-json-experiment/json"
 
 	"github.com/olekukonko/tablewriter"
@@ -1510,14 +1511,14 @@ func main() {
 	for range numLineWorkers {
 		lineWg.Go(func() {
 			for work := range lineChan {
-				var entry ConversationEntry
+				var entry pricing.ConversationEntry
 				if err := json.Unmarshal(work.Line, &entry); err != nil {
 					// Skip corrupted/partial lines (expected for history files after crash)
 					continue
 				}
 
 				// Calculate cost and get pricing key
-				cost, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey := CalculateCost(&entry.Message, entry.Timestamp)
+				cost, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey := pricing.CalculateCost(&entry.Message, entry.Timestamp)
 
 				// Skip entries with no valid pricing
 				if pricingKey == "" {
@@ -1774,7 +1775,7 @@ func processOpenCodeFile(path string) (*CostRecord, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	var msg OpenCodeMessage
+	var msg pricing.OpenCodeMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
@@ -1799,7 +1800,7 @@ func processOpenCodeFile(path string) (*CostRecord, error) {
 	timestamp := time.UnixMilli(msg.Time.Created)
 
 	// Calculate cost using dynamic pricing (OpenRouter fallback)
-	totalCost, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey, _ := CalculateCostWithDynamicPricing(
+	totalCost, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey, _ := pricing.CalculateCostWithDynamicPricing(
 		msg.ModelID,
 		inputTokens,
 		outputTokens,
