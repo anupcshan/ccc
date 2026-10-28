@@ -15,6 +15,7 @@ import (
 
 // ModelPricing represents the pricing for a model in dollars per million tokens
 type ModelPricing struct {
+	Model        string  // Pricing key, e.g. "opus-5" or "deepseek-v4-pro-peak"
 	Input        float64 // Base input tokens
 	Cache5mWrite float64 // 5m cache writes
 	Cache1hWrite float64 // 1h cache writes
@@ -23,9 +24,10 @@ type ModelPricing struct {
 }
 
 // Pricing table for Claude model families (per million tokens)
-var modelPricing = map[string]ModelPricing{
+var modelPricing = map[string]*ModelPricing{
 	// Opus 5 is priced identically to Opus 4.8 ($5/$25). Fast mode is $10/$50.
 	"opus-5": {
+		Model:        "opus-5",
 		Input:        5.00,
 		Cache5mWrite: 6.25,
 		Cache1hWrite: 10.00,
@@ -33,6 +35,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       25.00,
 	},
 	"opus-5-fast": {
+		Model:        "opus-5-fast",
 		Input:        10.00,
 		Cache5mWrite: 12.50,
 		Cache1hWrite: 20.00,
@@ -40,6 +43,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       50.00,
 	},
 	"opus-4.8": {
+		Model:        "opus-4.8",
 		Input:        5.00,
 		Cache5mWrite: 6.25,
 		Cache1hWrite: 10.00,
@@ -47,6 +51,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       25.00,
 	},
 	"opus-4.8-fast": {
+		Model:        "opus-4.8-fast",
 		Input:        10.00,
 		Cache5mWrite: 12.50,
 		Cache1hWrite: 20.00,
@@ -54,6 +59,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       50.00,
 	},
 	"opus-4.7": {
+		Model:        "opus-4.7",
 		Input:        5.00,
 		Cache5mWrite: 6.25,
 		Cache1hWrite: 10.00,
@@ -61,6 +67,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       25.00,
 	},
 	"fable-5": {
+		Model:        "fable-5",
 		Input:        10.00,
 		Cache5mWrite: 12.50,
 		Cache1hWrite: 20.00,
@@ -68,6 +75,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       50.00,
 	},
 	"opus-4.6": {
+		Model:        "opus-4.6",
 		Input:        5.00,
 		Cache5mWrite: 6.25,
 		Cache1hWrite: 10.00,
@@ -75,6 +83,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       25.00,
 	},
 	"opus-4.6-longcontext": {
+		Model:        "opus-4.6-longcontext",
 		Input:        10.00,
 		Cache5mWrite: 12.50,
 		Cache1hWrite: 20.00,
@@ -82,6 +91,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       37.50,
 	},
 	"opus-4.5": {
+		Model:        "opus-4.5",
 		Input:        5.00,
 		Cache5mWrite: 6.25,
 		Cache1hWrite: 10.00, // 2× input, following standard pattern
@@ -89,6 +99,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       25.00,
 	},
 	"opus": {
+		Model:        "opus",
 		Input:        15.00,
 		Cache5mWrite: 18.75,
 		Cache1hWrite: 30.00,
@@ -96,6 +107,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       75.00,
 	},
 	"sonnet": {
+		Model:        "sonnet",
 		Input:        3.00,
 		Cache5mWrite: 3.75,
 		Cache1hWrite: 6.00,
@@ -103,6 +115,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       15.00,
 	},
 	"sonnet-longcontext": {
+		Model:        "sonnet-longcontext",
 		Input:        6.00,
 		Cache5mWrite: 7.50,  // Proportionally scaled
 		Cache1hWrite: 12.00, // Proportionally scaled
@@ -113,6 +126,7 @@ var modelPricing = map[string]ModelPricing{
 	// Standard pricing ($3/$15) takes effect from 2026-09-01.
 	// GetModelPricing selects between them by timestamp.
 	"sonnet-5-intro": {
+		Model:        "sonnet-5-intro",
 		Input:        2.00,
 		Cache5mWrite: 2.50,
 		Cache1hWrite: 4.00,
@@ -120,6 +134,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       10.00,
 	},
 	"sonnet-5": {
+		Model:        "sonnet-5",
 		Input:        3.00,
 		Cache5mWrite: 3.75,
 		Cache1hWrite: 6.00,
@@ -127,6 +142,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       15.00,
 	},
 	"haiku-4.5": {
+		Model:        "haiku-4.5",
 		Input:        1.00,
 		Cache5mWrite: 1.25,
 		Cache1hWrite: 2.00,
@@ -134,6 +150,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       5.00,
 	},
 	"haiku-3.5": {
+		Model:        "haiku-3.5",
 		Input:        0.80,
 		Cache5mWrite: 1.00,
 		Cache1hWrite: 1.60,
@@ -141,6 +158,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       4.00,
 	},
 	"haiku-3": {
+		Model:        "haiku-3",
 		Input:        0.25,
 		Cache5mWrite: 0.30,
 		Cache1hWrite: 0.50,
@@ -152,6 +170,7 @@ var modelPricing = map[string]ModelPricing{
 	// Announced: https://api-docs.deepseek.com/news/news260813
 	// Rates: https://api-docs.deepseek.com/quick_start/pricing/
 	"deepseek-v4-pro-peak": {
+		Model:        "deepseek-v4-pro-peak",
 		Input:        1.32,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -159,6 +178,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       3.96,
 	},
 	"deepseek-v4-pro-offpeak": {
+		Model:        "deepseek-v4-pro-offpeak",
 		Input:        0.66,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -166,6 +186,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       1.98,
 	},
 	"deepseek-v4-flash-peak": {
+		Model:        "deepseek-v4-flash-peak",
 		Input:        0.44,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -173,6 +194,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       1.32,
 	},
 	"deepseek-v4-flash-offpeak": {
+		Model:        "deepseek-v4-flash-offpeak",
 		Input:        0.22,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -184,6 +206,7 @@ var modelPricing = map[string]ModelPricing{
 	// Announced: https://api-docs.deepseek.com/news/news260910
 	// Rates: https://api-docs.deepseek.com/quick_start/pricing/
 	"deepseek-v4.1-flash-peak": {
+		Model:        "deepseek-v4.1-flash-peak",
 		Input:        0.30,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -191,6 +214,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       1.20,
 	},
 	"deepseek-v4.1-flash-offpeak": {
+		Model:        "deepseek-v4.1-flash-offpeak",
 		Input:        0.15,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -199,6 +223,7 @@ var modelPricing = map[string]ModelPricing{
 	},
 	// Flat rates before the 2026-08-16 cutoff
 	"deepseek-v4-pro": {
+		Model:        "deepseek-v4-pro",
 		Input:        0.435,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -206,6 +231,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       0.87,
 	},
 	"deepseek-v4-flash": {
+		Model:        "deepseek-v4-flash",
 		Input:        0.14,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -215,6 +241,7 @@ var modelPricing = map[string]ModelPricing{
 	// MiMo pricing: https://platform.xiaomimimo.com/docs/en-US/price/pay-as-you-go
 	// UltraSpeed: https://mimo.mi.com/models/en-US/mimo-v2.5-pro-ultraspeed
 	"mimo-v2.5-pro-ultraspeed": {
+		Model:        "mimo-v2.5-pro-ultraspeed",
 		Input:        1.305,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -222,6 +249,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       2.61,
 	},
 	"mimo-v2.5-pro": {
+		Model:        "mimo-v2.5-pro",
 		Input:        0.435,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -229,6 +257,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       0.87,
 	},
 	"mimo-v2.5": {
+		Model:        "mimo-v2.5",
 		Input:        0.14,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -239,6 +268,7 @@ var modelPricing = map[string]ModelPricing{
 	// A half-price promotion runs until 24:00 on 2026-09-09 Singapore time
 	// (16:00 UTC). GetModelPricing selects between them by timestamp.
 	"glm-5.3-flash": {
+		Model:        "glm-5.3-flash",
 		Input:        0.15,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -246,6 +276,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       0.50,
 	},
 	"glm-5.3-flash-promo": {
+		Model:        "glm-5.3-flash-promo",
 		Input:        0.075,
 		Cache5mWrite: 0.0,
 		Cache1hWrite: 0.0,
@@ -254,6 +285,7 @@ var modelPricing = map[string]ModelPricing{
 	},
 	// GLM pricing: https://docs.z.ai/guides/overview/pricing
 	"glm-5.3": {
+		Model:        "glm-5.3",
 		Input:        1.4,
 		Cache5mWrite: 0.0, // Cached Input Storage: limited-time free
 		Cache1hWrite: 0.0,
@@ -261,6 +293,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       4.4,
 	},
 	"glm-5.2": {
+		Model:        "glm-5.2",
 		Input:        1.4,
 		Cache5mWrite: 0.0, // Cached Input Storage: limited-time free
 		Cache1hWrite: 0.0,
@@ -268,6 +301,7 @@ var modelPricing = map[string]ModelPricing{
 		Output:       4.4,
 	},
 	"glm-4.7": {
+		Model:        "glm-4.7",
 		Input:        0.6,
 		Cache5mWrite: 0.0, // Cached Input Storage: limited-time free
 		Cache1hWrite: 0.0,
@@ -319,49 +353,46 @@ func isDeepSeekPeakHour(t time.Time) bool {
 }
 
 // GetModelPricing returns pricing for a model by detecting the family.
-// timestamp is used to determine whether long-context pricing applies
-// (before 2026-03-13, Opus 4.6 and Sonnet 4.6 had a >200K surcharge).
-// Returns (pricing, pricingKey, ok)
-func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (ModelPricing, string, bool) {
+func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) *ModelPricing {
 	modelLower := strings.ToLower(model)
 
 	// Check for Fable
 	if strings.Contains(modelLower, "fable") {
-		return modelPricing["fable-5"], "fable-5", true
+		return modelPricing["fable-5"]
 	}
 
 	// Check for Opus
 	if strings.Contains(modelLower, "opus") {
 		if strings.Contains(modelLower, "opus-5") || strings.Contains(modelLower, "opus_5") {
 			if usage != nil && usage.Speed == "fast" {
-				return modelPricing["opus-5-fast"], "opus-5-fast", true
+				return modelPricing["opus-5-fast"]
 			}
-			return modelPricing["opus-5"], "opus-5", true
+			return modelPricing["opus-5"]
 		}
 		if strings.Contains(modelLower, "4.8") || strings.Contains(modelLower, "4-8") {
 			if usage != nil && usage.Speed == "fast" {
-				return modelPricing["opus-4.8-fast"], "opus-4.8-fast", true
+				return modelPricing["opus-4.8-fast"]
 			}
-			return modelPricing["opus-4.8"], "opus-4.8", true
+			return modelPricing["opus-4.8"]
 		}
 		if strings.Contains(modelLower, "4.7") || strings.Contains(modelLower, "4-7") {
-			return modelPricing["opus-4.7"], "opus-4.7", true
+			return modelPricing["opus-4.7"]
 		}
 		if strings.Contains(modelLower, "4.6") || strings.Contains(modelLower, "4-6") {
 			// Before 1M context GA, >200K tokens had a long-context surcharge
 			if timestamp.Before(claude46LongContextGADate) && usage != nil {
 				totalInputTokens := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
 				if totalInputTokens > 200_000 {
-					return modelPricing["opus-4.6-longcontext"], "opus-4.6-longcontext", true
+					return modelPricing["opus-4.6-longcontext"]
 				}
 			}
-			return modelPricing["opus-4.6"], "opus-4.6", true
+			return modelPricing["opus-4.6"]
 		}
 		// Opus 4.5 has different pricing from older Opus models
 		if strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5") {
-			return modelPricing["opus-4.5"], "opus-4.5", true
+			return modelPricing["opus-4.5"]
 		}
-		return modelPricing["opus"], "opus", true
+		return modelPricing["opus"]
 	}
 
 	// Check for Sonnet (all versions same price)
@@ -371,9 +402,9 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 		// standard pricing, so no long-context surcharge applies.
 		if strings.Contains(modelLower, "sonnet-5") || strings.Contains(modelLower, "sonnet_5") {
 			if timestamp.Before(claudeSonnet5StandardDate) {
-				return modelPricing["sonnet-5-intro"], "sonnet-5-intro", true
+				return modelPricing["sonnet-5-intro"]
 			}
-			return modelPricing["sonnet-5"], "sonnet-5", true
+			return modelPricing["sonnet-5"]
 		}
 		// Sonnet 4/4.5/4.6 with > 200K input tokens get long-context pricing,
 		// but Sonnet 4.6 is exempt after 1M context GA date
@@ -382,54 +413,54 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 			if !is46 || timestamp.Before(claude46LongContextGADate) {
 				totalInputTokens := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
 				if totalInputTokens > 200_000 {
-					return modelPricing["sonnet-longcontext"], "sonnet-longcontext", true
+					return modelPricing["sonnet-longcontext"]
 				}
 			}
 		}
-		return modelPricing["sonnet"], "sonnet", true
+		return modelPricing["sonnet"]
 	}
 
 	// Check for Haiku variants
 	if strings.Contains(modelLower, "haiku") {
 		// Check for specific versions
 		if strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5") {
-			return modelPricing["haiku-4.5"], "haiku-4.5", true
+			return modelPricing["haiku-4.5"]
 		}
 		if strings.Contains(modelLower, "3.5") || strings.Contains(modelLower, "3-5") {
-			return modelPricing["haiku-3.5"], "haiku-3.5", true
+			return modelPricing["haiku-3.5"]
 		}
 		// Default to Haiku 3 for older versions or unspecified
-		return modelPricing["haiku-3"], "haiku-3", true
+		return modelPricing["haiku-3"]
 	}
 
 	// Check for MiMo models. UltraSpeed and Pro both contain "mimo-v2.5-pro",
 	// so UltraSpeed must be matched first.
 	if strings.Contains(modelLower, "mimo-v2.5-pro-ultraspeed") {
-		return modelPricing["mimo-v2.5-pro-ultraspeed"], "mimo-v2.5-pro-ultraspeed", true
+		return modelPricing["mimo-v2.5-pro-ultraspeed"]
 	}
 	if strings.Contains(modelLower, "mimo-v2.5-pro") {
-		return modelPricing["mimo-v2.5-pro"], "mimo-v2.5-pro", true
+		return modelPricing["mimo-v2.5-pro"]
 	}
 	if strings.Contains(modelLower, "mimo-v2.5") {
-		return modelPricing["mimo-v2.5"], "mimo-v2.5", true
+		return modelPricing["mimo-v2.5"]
 	}
 
 	// Check for GLM (z.ai) models. Flash must be matched before glm-5.3,
 	// which is a substring of every flash model name.
 	if strings.Contains(modelLower, "glm-5.3-flash") {
 		if timestamp.Before(glmFlashPromoEndDate) {
-			return modelPricing["glm-5.3-flash-promo"], "glm-5.3-flash-promo", true
+			return modelPricing["glm-5.3-flash-promo"]
 		}
-		return modelPricing["glm-5.3-flash"], "glm-5.3-flash", true
+		return modelPricing["glm-5.3-flash"]
 	}
 	if strings.Contains(modelLower, "glm-5.3") {
-		return modelPricing["glm-5.3"], "glm-5.3", true
+		return modelPricing["glm-5.3"]
 	}
 	if strings.Contains(modelLower, "glm-5.2") {
-		return modelPricing["glm-5.2"], "glm-5.2", true
+		return modelPricing["glm-5.2"]
 	}
 	if strings.Contains(modelLower, "glm-4.7") {
-		return modelPricing["glm-4.7"], "glm-4.7", true
+		return modelPricing["glm-4.7"]
 	}
 
 	// Check for DeepSeek models. V4 pricing is time-dependent: flat rates
@@ -438,34 +469,34 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) (Model
 	if strings.Contains(modelLower, "deepseek") {
 		if strings.Contains(modelLower, "v4-pro") {
 			if timestamp.Before(deepSeekPeakPricingDate) {
-				return modelPricing["deepseek-v4-pro"], "deepseek-v4-pro", true
+				return modelPricing["deepseek-v4-pro"]
 			}
 			if isDeepSeekPeakHour(timestamp) {
-				return modelPricing["deepseek-v4-pro-peak"], "deepseek-v4-pro-peak", true
+				return modelPricing["deepseek-v4-pro-peak"]
 			}
-			return modelPricing["deepseek-v4-pro-offpeak"], "deepseek-v4-pro-offpeak", true
+			return modelPricing["deepseek-v4-pro-offpeak"]
 		}
 		// The flash model answers to deepseek-v4-flash (retired),
 		// deepseek-v4-flash-vision-exp (retired) and deepseek-flash.
 		if strings.Contains(modelLower, "v4-flash") || strings.Contains(modelLower, "deepseek-flash") {
 			if timestamp.Before(deepSeekPeakPricingDate) {
-				return modelPricing["deepseek-v4-flash"], "deepseek-v4-flash", true
+				return modelPricing["deepseek-v4-flash"]
 			}
 			if timestamp.Before(deepSeekV41FlashPricingDate) {
 				if isDeepSeekPeakHour(timestamp) {
-					return modelPricing["deepseek-v4-flash-peak"], "deepseek-v4-flash-peak", true
+					return modelPricing["deepseek-v4-flash-peak"]
 				}
-				return modelPricing["deepseek-v4-flash-offpeak"], "deepseek-v4-flash-offpeak", true
+				return modelPricing["deepseek-v4-flash-offpeak"]
 			}
 			if isDeepSeekPeakHour(timestamp) {
-				return modelPricing["deepseek-v4.1-flash-peak"], "deepseek-v4.1-flash-peak", true
+				return modelPricing["deepseek-v4.1-flash-peak"]
 			}
-			return modelPricing["deepseek-v4.1-flash-offpeak"], "deepseek-v4.1-flash-offpeak", true
+			return modelPricing["deepseek-v4.1-flash-offpeak"]
 		}
-		return ModelPricing{}, model, true
+		return nil
 	}
 
-	return ModelPricing{}, "", false
+	return nil
 }
 
 // CalculateCost calculates the cost in dollars for a message.
@@ -477,8 +508,8 @@ func CalculateCost(msg *Message, timestamp time.Time) (float64, int, int, int, i
 		return 0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, ""
 	}
 
-	pricing, pricingKey, ok := GetModelPricing(*msg.Model, msg.Usage, timestamp)
-	if !ok {
+	pricing := GetModelPricing(*msg.Model, msg.Usage, timestamp)
+	if pricing == nil {
 		usage := msg.Usage
 		cacheWriteTokens := 0
 		if usage.CacheCreation != nil {
@@ -509,7 +540,7 @@ func CalculateCost(msg *Message, timestamp time.Time) (float64, int, int, int, i
 
 	totalCost := inputCost + cacheWriteCost + cacheReadCost + outputCost
 
-	return totalCost, usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, cacheWriteTokens, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey
+	return totalCost, usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, cacheWriteTokens, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricing.Model
 }
 
 // OpenRouter pricing types and caching
@@ -674,12 +705,11 @@ func ensureOpenRouterPricing() *OpenRouterCache {
 	return newCache
 }
 
-// GetOpenRouterPricing looks up pricing for a model from OpenRouter
-// Returns (pricing, pricingKey, ok)
-func GetOpenRouterPricing(modelID string) (ModelPricing, string, bool) {
+// GetOpenRouterPricing looks up pricing for a model from OpenRouter.
+func GetOpenRouterPricing(modelID string) *ModelPricing {
 	cache := ensureOpenRouterPricing()
 	if cache == nil {
-		return ModelPricing{}, "", false
+		return nil
 	}
 
 	// Try exact match first
@@ -703,7 +733,7 @@ func GetOpenRouterPricing(modelID string) (ModelPricing, string, bool) {
 	}
 
 	if !ok {
-		return ModelPricing{}, "", false
+		return nil
 	}
 
 	// Convert per-token pricing to per-million-token pricing
@@ -712,15 +742,14 @@ func GetOpenRouterPricing(modelID string) (ModelPricing, string, bool) {
 	cacheReadCost, _ := strconv.ParseFloat(model.Pricing.InputCacheRead, 64)
 	cacheWriteCost, _ := strconv.ParseFloat(model.Pricing.InputCacheWrite, 64)
 
-	pricing := ModelPricing{
+	return &ModelPricing{
+		Model:        model.ID,
 		Input:        promptCost * 1_000_000,
 		Output:       completionCost * 1_000_000,
 		CacheRead:    cacheReadCost * 1_000_000,
 		Cache5mWrite: cacheWriteCost * 1_000_000, // OpenRouter doesn't distinguish 5m/1h
 		Cache1hWrite: cacheWriteCost * 1_000_000,
 	}
-
-	return pricing, model.ID, true
 }
 
 // CalculateCostWithDynamicPricing calculates cost using hardcoded Claude pricing or OpenRouter fallback.
@@ -728,18 +757,18 @@ func GetOpenRouterPricing(modelID string) (ModelPricing, string, bool) {
 // Returns same values as CalculateCost, plus whether OpenRouter pricing was used
 func CalculateCostWithDynamicPricing(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int, timestamp time.Time) (float64, float64, float64, float64, float64, string, bool) {
 	// First try hardcoded Claude pricing
-	pricing, pricingKey, ok := GetModelPricing(model, nil, timestamp)
+	pricing := GetModelPricing(model, nil, timestamp)
 	usedOpenRouter := false
 
-	if !ok {
+	if pricing == nil {
 		// Fall back to OpenRouter
-		pricing, pricingKey, ok = GetOpenRouterPricing(model)
-		if ok {
+		pricing = GetOpenRouterPricing(model)
+		if pricing != nil {
 			usedOpenRouter = true
 		}
 	}
 
-	if !ok {
+	if pricing == nil {
 		// No pricing found - return zeros but with model name as key
 		return 0.0, 0.0, 0.0, 0.0, 0.0, model, false
 	}
@@ -751,5 +780,5 @@ func CalculateCostWithDynamicPricing(model string, inputTokens, outputTokens, ca
 
 	totalCost := inputCost + outputCost + cacheReadCost + cacheWriteCost
 
-	return totalCost, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricingKey, usedOpenRouter
+	return totalCost, inputCost, outputCost, cacheReadCost, cacheWriteCost, pricing.Model, usedOpenRouter
 }

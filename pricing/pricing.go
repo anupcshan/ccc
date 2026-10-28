@@ -11,6 +11,6 @@ import (
 type ModelPricing = internalpricing.ModelPricing
 
 // GetModelPricing returns the pricing for model at the given timestamp.
-func GetModelPricing(model string, timestamp time.Time) (ModelPricing, string, bool) {
+func GetModelPricing(model string, timestamp time.Time) *ModelPricing {
 	return internalpricing.GetModelPricing(model, nil, timestamp)
 }
