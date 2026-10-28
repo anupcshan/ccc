@@ -836,7 +836,7 @@ func renderTable(cfg GroupConfig, keys []string, metricsByGroup map[string]Metri
 	table.Configure(func(c *tablewriter.Config) {
 		c.Header.Formatting.AutoFormat = tw.Off // Don't mangle header text
 		c.Row.Alignment.PerColumn = alignments
-		c.Row.Formatting = tw.CellFormatting{MergeMode: tw.MergeHierarchical}
+		c.Row.Merging = tw.CellMerging{Mode: tw.MergeHierarchical}
 	})
 
 	table.Header(headers)
