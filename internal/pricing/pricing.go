@@ -308,6 +308,253 @@ var modelPricing = map[string]*ModelPricing{
 		CacheRead:    0.11,
 		Output:       2.2,
 	},
+	// OpenAI models from GPT-5.4 onward. Rates are per million tokens from
+	// https://developers.openai.com/api/docs/pricing.
+	// OpenAI publishes no cache write rate, so the write fields stay zero.
+	// A -longcontext entry applies when a request's input exceeds 272K
+	// tokens.
+	"gpt-5.4": {
+		Model:        "gpt-5.4",
+		Input:        2.50,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.25,
+		Output:       15.00,
+	},
+	"gpt-5.4-longcontext": {
+		Model:        "gpt-5.4-longcontext",
+		Input:        5.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.50,
+		Output:       22.50,
+	},
+	"gpt-5.4-pro": {
+		Model:        "gpt-5.4-pro",
+		Input:        30.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0,
+		Output:       180.00,
+	},
+	"gpt-5.4-pro-longcontext": {
+		Model:        "gpt-5.4-pro-longcontext",
+		Input:        60.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0,
+		Output:       270.00,
+	},
+	"gpt-5.4-mini": {
+		Model:        "gpt-5.4-mini",
+		Input:        0.75,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.075,
+		Output:       4.50,
+	},
+	"gpt-5.4-nano": {
+		Model:        "gpt-5.4-nano",
+		Input:        0.20,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.02,
+		Output:       1.25,
+	},
+	"gpt-5.5": {
+		Model:        "gpt-5.5",
+		Input:        5.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.50,
+		Output:       30.00,
+	},
+	"gpt-5.5-longcontext": {
+		Model:        "gpt-5.5-longcontext",
+		Input:        10.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    1.00,
+		Output:       45.00,
+	},
+	"gpt-5.5-pro": {
+		Model:        "gpt-5.5-pro",
+		Input:        30.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0,
+		Output:       180.00,
+	},
+	"gpt-5.5-pro-longcontext": {
+		Model:        "gpt-5.5-pro-longcontext",
+		Input:        60.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.0,
+		Output:       270.00,
+	},
+	// GPT-5.6 Sol rates are promotional through 2026-11-30. The pricing page
+	// does not publish the rates that follow.
+	"gpt-5.6-sol": {
+		Model:        "gpt-5.6-sol",
+		Input:        4.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.40,
+		Output:       20.00,
+	},
+	"gpt-5.6-sol-longcontext": {
+		Model:        "gpt-5.6-sol-longcontext",
+		Input:        8.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.80,
+		Output:       30.00,
+	},
+	"gpt-5.6-terra": {
+		Model:        "gpt-5.6-terra",
+		Input:        2.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.20,
+		Output:       12.00,
+	},
+	"gpt-5.6-terra-longcontext": {
+		Model:        "gpt-5.6-terra-longcontext",
+		Input:        4.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.40,
+		Output:       18.00,
+	},
+	"gpt-5.6-luna": {
+		Model:        "gpt-5.6-luna",
+		Input:        0.20,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.02,
+		Output:       1.20,
+	},
+	"gpt-5.6-luna-longcontext": {
+		Model:        "gpt-5.6-luna-longcontext",
+		Input:        0.40,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.04,
+		Output:       1.80,
+	},
+	"gpt-6-astra": {
+		Model:        "gpt-6-astra",
+		Input:        10.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    1.00,
+		Output:       50.00,
+	},
+	"gpt-6-astra-longcontext": {
+		Model:        "gpt-6-astra-longcontext",
+		Input:        20.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    2.00,
+		Output:       75.00,
+	},
+	"gpt-6-sol": {
+		Model:        "gpt-6-sol",
+		Input:        2.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.20,
+		Output:       10.00,
+	},
+	"gpt-6-sol-longcontext": {
+		Model:        "gpt-6-sol-longcontext",
+		Input:        4.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.40,
+		Output:       15.00,
+	},
+	"gpt-6-luna": {
+		Model:        "gpt-6-luna",
+		Input:        0.10,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.01,
+		Output:       0.50,
+	},
+	"gpt-6-luna-longcontext": {
+		Model:        "gpt-6-luna-longcontext",
+		Input:        0.20,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.02,
+		Output:       0.75,
+	},
+	"gpt-6.1-sol": {
+		Model:        "gpt-6.1-sol",
+		Input:        2.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.10,
+		Output:       10.00,
+	},
+	"gpt-6.1-sol-longcontext": {
+		Model:        "gpt-6.1-sol-longcontext",
+		Input:        4.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.20,
+		Output:       15.00,
+	},
+	"gpt-6.1-terra": {
+		Model:        "gpt-6.1-terra",
+		Input:        1.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.05,
+		Output:       5.00,
+	},
+	"gpt-6.1-terra-longcontext": {
+		Model:        "gpt-6.1-terra-longcontext",
+		Input:        2.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.10,
+		Output:       7.50,
+	},
+	"gpt-6.2-astra": {
+		Model:        "gpt-6.2-astra",
+		Input:        8.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.40,
+		Output:       40.00,
+	},
+	"gpt-6.2-astra-longcontext": {
+		Model:        "gpt-6.2-astra-longcontext",
+		Input:        16.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.80,
+		Output:       60.00,
+	},
+	"gpt-6.2-sol": {
+		Model:        "gpt-6.2-sol",
+		Input:        2.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.10,
+		Output:       10.00,
+	},
+	"gpt-6.2-sol-longcontext": {
+		Model:        "gpt-6.2-sol-longcontext",
+		Input:        4.00,
+		Cache5mWrite: 0.0,
+		Cache1hWrite: 0.0,
+		CacheRead:    0.20,
+		Output:       15.00,
+	},
 }
 
 // isSonnet4 checks if the model is Sonnet 4 or 4.5
@@ -350,6 +597,45 @@ func isDeepSeekPeakHour(t time.Time) bool {
 	}
 	h := t.Hour()
 	return (h >= 1 && h < 4) || (h >= 6 && h < 10)
+}
+
+// gptLongContextThreshold is the input token count above which OpenAI models
+// with a long-context tier use the -longcontext rates.
+const gptLongContextThreshold = 272_000
+
+// gptModelIDs lists the GPT models with pricing entries.
+var gptModelIDs []string
+
+func init() {
+	for id := range modelPricing {
+		if strings.HasPrefix(id, "gpt-") && !strings.HasSuffix(id, "-longcontext") {
+			gptModelIDs = append(gptModelIDs, id)
+		}
+	}
+}
+
+// getGPTPricing returns pricing for a GPT model. The longest matching model
+// ID wins, so dated snapshots still match and gpt-5.4-mini takes precedence
+// over gpt-5.4.
+func getGPTPricing(modelLower string, usage *UsageInfo) *ModelPricing {
+	matched := ""
+	for _, id := range gptModelIDs {
+		if len(id) > len(matched) && strings.Contains(modelLower, id) {
+			matched = id
+		}
+	}
+	if matched == "" {
+		return nil
+	}
+	if usage != nil {
+		totalInputTokens := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+		if totalInputTokens > gptLongContextThreshold {
+			if pricing, ok := modelPricing[matched+"-longcontext"]; ok {
+				return pricing
+			}
+		}
+	}
+	return modelPricing[matched]
 }
 
 // GetModelPricing returns pricing for a model by detecting the family.
@@ -494,6 +780,11 @@ func GetModelPricing(model string, usage *UsageInfo, timestamp time.Time) *Model
 			return modelPricing["deepseek-v4.1-flash-offpeak"]
 		}
 		return nil
+	}
+
+	// Check for OpenAI GPT models.
+	if strings.Contains(modelLower, "gpt-") {
+		return getGPTPricing(modelLower, usage)
 	}
 
 	return nil
@@ -752,12 +1043,17 @@ func GetOpenRouterPricing(modelID string) *ModelPricing {
 	}
 }
 
-// CalculateCostWithDynamicPricing calculates cost using hardcoded Claude pricing or OpenRouter fallback.
+// CalculateCostWithDynamicPricing calculates cost using hardcoded pricing or OpenRouter fallback.
 // timestamp is used to determine whether long-context pricing applies.
 // Returns same values as CalculateCost, plus whether OpenRouter pricing was used
 func CalculateCostWithDynamicPricing(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int, timestamp time.Time) (float64, float64, float64, float64, float64, string, bool) {
-	// First try hardcoded Claude pricing
-	pricing := GetModelPricing(model, nil, timestamp)
+	// First try hardcoded pricing
+	usage := &UsageInfo{
+		InputTokens:              inputTokens,
+		CacheReadInputTokens:     cacheReadTokens,
+		CacheCreationInputTokens: cacheWriteTokens,
+	}
+	pricing := GetModelPricing(model, usage, timestamp)
 	usedOpenRouter := false
 
 	if pricing == nil {
